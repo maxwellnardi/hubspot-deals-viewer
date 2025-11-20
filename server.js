@@ -485,6 +485,18 @@ app.post('/api/next-steps/generate-all', async (req, res) => {
   }
 });
 
+// Clear cache endpoint - forces full refresh on next request
+app.post('/api/clear-cache', async (req, res) => {
+  try {
+    await db.clearDealsCache();
+    console.log('Cache cleared successfully');
+    res.json({ success: true, message: 'Cache cleared. Next request will fetch fresh data.' });
+  } catch (error) {
+    console.error('Error clearing cache:', error.message);
+    res.status(500).json({ error: 'Failed to clear cache', details: error.message });
+  }
+});
+
 // Initialize database and start server
 async function startServer() {
   try {

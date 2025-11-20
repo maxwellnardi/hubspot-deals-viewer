@@ -413,7 +413,7 @@
                 <button class="generate-all-btn" id="generateAllBtn" onclick="generateAllNextSteps()">
                     Generate All Next Steps
                 </button>
-                <button class="refresh-btn" id="refreshBtn" onclick="loadDeals()">
+                <button class="refresh-btn" id="refreshBtn" onclick="clearCacheAndRefresh()">
                     Refresh
                 </button>
             </div>
@@ -457,6 +457,33 @@
                 }
             } catch (error) {
                 console.error('Error loading next steps:', error);
+            }
+        }
+
+        async function clearCacheAndRefresh() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Clearing cache...';
+
+            try {
+                const response = await fetch('/api/clear-cache', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    console.log('Cache cleared successfully');
+                    // Now reload the deals with fresh data
+                    await loadDeals();
+                } else {
+                    console.error('Failed to clear cache:', result.error);
+                    refreshBtn.disabled = false;
+                    refreshBtn.textContent = 'Refresh';
+                    alert('Failed to clear cache. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error clearing cache:', error);
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Refresh';
+                alert('Error clearing cache. Please try again.');
             }
         }
 
