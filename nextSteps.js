@@ -175,14 +175,18 @@ CRITICAL INSTRUCTIONS:
 4. Surface the ACTUAL action item mentioned in the note
 5. If multiple action items in note, pick the one that most directly advances the deal
 6. Include specifics: who, what, when, how much
+7. NEVER mention company name - it's already shown in the same row
+8. Be maximally concise - cut unnecessary words like "team", "to discuss next steps"
 
 BAD (useless): "Review 1/17 note for next steps"
-BAD (useless): "Follow up on meeting action items"
+BAD (verbose): "Schedule follow-up meeting with HPE team to discuss next steps"
+BAD (redundant): "Follow up with Acme about pricing"
 GOOD: "Send pricing for 100-seat license by EOW (per CTO request)"
-GOOD: "Schedule tech demo with eng team before Jan 31 deadline"
+GOOD: "Schedule tech demo before Jan 31 deadline"
 GOOD: "Get legal approval on data privacy terms (blocking signature)"
+GOOD: "Schedule follow-up for Dec 15 (per Alberto's request)"
 
-OUTPUT: 80 chars max, terse, actionable, specific.`;
+OUTPUT: 80 chars max, terse, actionable, specific. NO company name.`;
 
   try {
     const message = await anthropic.messages.create({
