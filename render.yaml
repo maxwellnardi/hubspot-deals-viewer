@@ -17,6 +17,6 @@ services:
 
 databases:
   - name: hubspot-deals-db
-    plan: starter
+    plan: free
     databaseName: hubspot_deals
     user: hubspot_user
