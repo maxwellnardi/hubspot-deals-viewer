@@ -99,8 +99,10 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (increased from 5)
 const CACHE_ITEM_DURATION = 60 * 60 * 1000; // 1 hour for individual items
 
 // Rate limiting: Process requests in batches with delays
-const BATCH_SIZE = 10; // Process 10 items at a time
-const BATCH_DELAY = 1000; // 1 second delay between batches
+// HubSpot limit: 10 requests per 10 seconds for private apps
+// Each deal can make up to 4 API calls (company, meeting, contact, stage history)
+const BATCH_SIZE = 2; // Process 2 deals at a time (max 8 API calls)
+const BATCH_DELAY = 5000; // 5 second delay between batches to stay under rate limit
 
 // Helper function to delay execution
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
