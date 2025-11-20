@@ -33,8 +33,8 @@ if (!isPrivateAppToken) {
 }
 
 async function getLastMeetingDate(companyId) {
-  // Check cache first
-  const cached = await db.getMeetingCache(companyId, CACHE_ITEM_DURATION);
+  // Check cache first - use shorter duration for meetings to catch new ones quickly
+  const cached = await db.getMeetingCache(companyId, MEETING_CACHE_DURATION);
   if (cached !== null) {
     return cached;
   }
@@ -97,6 +97,7 @@ let isRefreshing = false;
 
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (increased from 5)
 const CACHE_ITEM_DURATION = 60 * 60 * 1000; // 1 hour for individual items
+const MEETING_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for meetings (to catch new meetings quickly)
 
 // Rate limiting: Process requests in batches with delays
 // HubSpot limit: 10 requests per 10 seconds for private apps
