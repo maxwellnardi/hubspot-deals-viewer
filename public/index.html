@@ -269,6 +269,29 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        .section-header:hover {
+            background-color: #222;
+        }
+
+        .section-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-toggle {
+            font-size: 14px;
+            color: #33ccdd;
+            transition: transform 0.2s;
+        }
+
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
         }
 
         .section-header h2 {
@@ -291,6 +314,18 @@
 
         .section-container:last-child {
             margin-bottom: 0;
+        }
+
+        .section-content {
+            max-height: 5000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+            opacity: 1;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+            opacity: 0;
         }
 
         .no-deals-section {
@@ -325,6 +360,11 @@
         let availableStages = [];
         let currentSort = { column: null, direction: 'asc' };
         let currentDropdown = null;
+        let sectionStates = {
+            poc: true,
+            upcoming: true,
+            past: true
+        };
 
         async function loadStages() {
             try {
@@ -442,16 +482,38 @@
             renderTable();
         }
 
+        function toggleSection(sectionName) {
+            sectionStates[sectionName] = !sectionStates[sectionName];
+            const content = document.getElementById(`section-content-${sectionName}`);
+            const toggle = document.getElementById(`section-toggle-${sectionName}`);
+
+            if (sectionStates[sectionName]) {
+                content.classList.remove('collapsed');
+                toggle.classList.remove('collapsed');
+            } else {
+                content.classList.add('collapsed');
+                toggle.classList.add('collapsed');
+            }
+        }
+
         function renderTable() {
             const tableContainer = document.getElementById('tableContainer');
             const now = new Date();
 
-            // Split deals into upcoming and past based on meeting date
+            // Split deals into POC, upcoming, and past
+            const pocDeals = [];
             const upcomingDeals = [];
             const pastDeals = [];
 
             dealsData.forEach(deal => {
-                if (deal.lastMeetingDate) {
+                // Check if deal is in POC stage
+                const isPOC = deal.dealStageLabel &&
+                    (deal.dealStageLabel.toLowerCase().includes('poc') ||
+                     deal.dealStageLabel.toLowerCase().includes('proof of concept'));
+
+                if (isPOC) {
+                    pocDeals.push(deal);
+                } else if (deal.lastMeetingDate) {
                     const meetingDate = new Date(deal.lastMeetingDate);
                     if (meetingDate > now) {
                         upcomingDeals.push(deal);
@@ -466,33 +528,63 @@
 
             const container = document.createElement('div');
 
+            // Render POC section
+            container.innerHTML += `
+                <div class="section-container">
+                    <div class="section-header" onclick="toggleSection('poc')">
+                        <div class="section-header-left">
+                            <span class="section-toggle ${sectionStates.poc ? '' : 'collapsed'}" id="section-toggle-poc">▼</span>
+                            <h2>POC Stage</h2>
+                        </div>
+                        <span class="section-count">${pocDeals.length} deal${pocDeals.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="section-content ${sectionStates.poc ? '' : 'collapsed'}" id="section-content-poc">
+                        ${pocDeals.length > 0 ? `
+                            <div class="table-container">
+                                ${renderDealsTable(pocDeals, 0)}
+                            </div>
+                        ` : '<div class="no-deals-section">No deals in POC stage</div>'}
+                    </div>
+                </div>
+            `;
+
             // Render Upcoming section
             container.innerHTML += `
                 <div class="section-container">
-                    <div class="section-header">
-                        <h2>Upcoming Meetings</h2>
+                    <div class="section-header" onclick="toggleSection('upcoming')">
+                        <div class="section-header-left">
+                            <span class="section-toggle ${sectionStates.upcoming ? '' : 'collapsed'}" id="section-toggle-upcoming">▼</span>
+                            <h2>Upcoming Meetings</h2>
+                        </div>
                         <span class="section-count">${upcomingDeals.length} deal${upcomingDeals.length !== 1 ? 's' : ''}</span>
                     </div>
-                    ${upcomingDeals.length > 0 ? `
-                        <div class="table-container">
-                            ${renderDealsTable(upcomingDeals, 0)}
-                        </div>
-                    ` : '<div class="no-deals-section">No upcoming meetings scheduled</div>'}
+                    <div class="section-content ${sectionStates.upcoming ? '' : 'collapsed'}" id="section-content-upcoming">
+                        ${upcomingDeals.length > 0 ? `
+                            <div class="table-container">
+                                ${renderDealsTable(upcomingDeals, pocDeals.length)}
+                            </div>
+                        ` : '<div class="no-deals-section">No upcoming meetings scheduled</div>'}
+                    </div>
                 </div>
             `;
 
             // Render Past section
             container.innerHTML += `
                 <div class="section-container">
-                    <div class="section-header">
-                        <h2>Past Meetings</h2>
+                    <div class="section-header" onclick="toggleSection('past')">
+                        <div class="section-header-left">
+                            <span class="section-toggle ${sectionStates.past ? '' : 'collapsed'}" id="section-toggle-past">▼</span>
+                            <h2>Past Meetings</h2>
+                        </div>
                         <span class="section-count">${pastDeals.length} deal${pastDeals.length !== 1 ? 's' : ''}</span>
                     </div>
-                    ${pastDeals.length > 0 ? `
-                        <div class="table-container">
-                            ${renderDealsTable(pastDeals, upcomingDeals.length)}
-                        </div>
-                    ` : '<div class="no-deals-section">No past meetings</div>'}
+                    <div class="section-content ${sectionStates.past ? '' : 'collapsed'}" id="section-content-past">
+                        ${pastDeals.length > 0 ? `
+                            <div class="table-container">
+                                ${renderDealsTable(pastDeals, pocDeals.length + upcomingDeals.length)}
+                            </div>
+                        ` : '<div class="no-deals-section">No past meetings</div>'}
+                    </div>
                 </div>
             `;
 
