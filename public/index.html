@@ -1149,10 +1149,16 @@
                                 s.label.toLowerCase().includes('re-engage')
                             );
 
+                            // Stages that should be excluded from suggestions
+                            const excludedStages = ['closed lost', 'poc', 'closed won - annual contract', 'backlog', 'proof of concept'];
+                            const isExcludedStage = excludedStages.some(excluded =>
+                                deal.dealStageLabel.toLowerCase().includes(excluded)
+                            );
+
                             // Check if user has rejected this suggestion
                             const hasRejectedSuggestion = deal.rejectedSuggestions && deal.rejectedSuggestions.includes('reengage');
 
-                            const shouldSuggestStage = isInactive && reengageStage && deal.dealStage !== reengageStage.id && !hasRejectedSuggestion;
+                            const shouldSuggestStage = isInactive && reengageStage && deal.dealStage !== reengageStage.id && !hasRejectedSuggestion && !isExcludedStage;
 
                             return `
                                 <tr class="${isInactive ? 'inactive-deal' : ''}" id="deal-row-${globalIndex}">
