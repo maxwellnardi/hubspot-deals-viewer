@@ -24,6 +24,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.5);
             overflow: hidden;
+            margin-bottom: 40px;
         }
 
         .header {
@@ -321,11 +322,13 @@
             overflow: hidden;
             transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
             opacity: 1;
+            padding-bottom: 30px;
         }
 
         .section-content.collapsed {
             max-height: 0;
             opacity: 0;
+            padding-bottom: 0;
         }
 
         .no-deals-section {
@@ -333,6 +336,10 @@
             text-align: center;
             color: #666;
             font-style: italic;
+        }
+
+        .section-container:last-child .section-content {
+            padding-bottom: 40px;
         }
     </style>
 </head>
