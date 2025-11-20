@@ -182,7 +182,7 @@ ONE SENTENCE ONLY:`;
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20240620',
       max_tokens: 150,
       messages: [{
         role: 'user',
@@ -193,7 +193,7 @@ ONE SENTENCE ONLY:`;
     const nextStep = message.content[0].text.trim();
     return nextStep;
   } catch (error) {
-    console.error('Error calling Claude AI:', error.message);
+    console.error('Error calling Claude AI:', error.message, error.response?.data || error);
     return "Error generating next step";
   }
 }
