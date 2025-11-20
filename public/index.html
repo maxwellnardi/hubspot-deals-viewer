@@ -771,7 +771,11 @@
 
         // Toggle specific column visibility
         function toggleColumn(columnName) {
-            columnVisibility[columnName] = !columnVisibility[columnName];
+            // Get the actual checkbox state
+            const checkbox = document.getElementById(`col-${columnName}`);
+            if (checkbox) {
+                columnVisibility[columnName] = checkbox.checked;
+            }
 
             // Save to localStorage
             localStorage.setItem('columnVisibility', JSON.stringify(columnVisibility));
