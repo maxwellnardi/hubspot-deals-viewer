@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HubSpot Deals Viewer</title>
     <style>
+        :root {
+            --background: 222.2 84% 4.9%;
+            --foreground: 210 40% 98%;
+            --card: 222.2 84% 4.9%;
+            --card-foreground: 210 40% 98%;
+            --popover: 222.2 84% 4.9%;
+            --popover-foreground: 210 40% 98%;
+            --primary: 210 40% 98%;
+            --primary-foreground: 222.2 47.4% 11.2%;
+            --secondary: 217.2 32.6% 17.5%;
+            --secondary-foreground: 210 40% 98%;
+            --muted: 217.2 32.6% 17.5%;
+            --muted-foreground: 215 20.2% 65.1%;
+            --accent: 217.2 32.6% 17.5%;
+            --accent-foreground: 210 40% 98%;
+            --destructive: 0 62.8% 30.6%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 217.2 32.6% 17.5%;
+            --input: 217.2 32.6% 17.5%;
+            --ring: 212.7 26.8% 83.9%;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,58 +35,84 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #1a1a1a;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
             padding: 0;
             margin: 0;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
             width: 100%;
-            background-color: #2d2d2d;
-            overflow: hidden;
+            min-height: 100vh;
+            background: hsl(var(--background));
         }
 
         .header {
-            background-color: #0091ae;
-            color: white;
-            padding: 20px 30px;
+            background: hsl(222.2 47.4% 11.2%);
+            border-bottom: 1px solid hsl(var(--border));
+            color: hsl(var(--foreground));
+            padding: 24px 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            backdrop-filter: blur(8px);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            position: relative;
         }
 
         h1 {
-            font-size: 24px;
-            font-weight: 600;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
 
-        .refresh-btn {
-            background-color: white;
-            color: #0091ae;
+        .refresh-btn, .generate-all-btn {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
             border: none;
             padding: 10px 20px;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            font-weight: 600;
-            transition: background-color 0.2s;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .refresh-btn:hover {
-            background-color: #e0e0e0;
+        .refresh-btn:hover, .generate-all-btn:hover {
+            background: hsl(210 40% 92%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+            transform: translateY(-1px);
         }
 
-        .refresh-btn:disabled {
-            opacity: 0.6;
+        .refresh-btn:active, .generate-all-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .refresh-btn:disabled, .generate-all-btn:disabled {
+            opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
         }
 
         .table-container {
             overflow-x: auto;
-            padding: 0 30px 30px 30px;
+            padding: 0 32px 32px 32px;
         }
 
         .section-container .table-container {
-            padding: 0;
+            padding: 0 32px 32px 32px;
         }
 
         .section-container table {
@@ -73,31 +121,36 @@
 
         table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
             border-spacing: 0;
+            background: hsl(222.2 47.4% 11.2%);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         }
 
         thead {
-            background-color: #1a1a1a;
-            border-bottom: 2px solid #444;
+            background: hsl(217.2 32.6% 17.5%);
+            border-bottom: 1px solid hsl(var(--border));
         }
 
         th {
-            padding: 12px 16px;
+            padding: 16px 20px;
             text-align: left;
             font-weight: 600;
-            color: #b0b0b0;
-            font-size: 14px;
+            color: hsl(var(--foreground));
+            font-size: 13px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.05em;
             cursor: pointer;
             user-select: none;
             position: relative;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
+            border-bottom: 1px solid hsl(var(--border));
         }
 
         th:hover {
-            background-color: #333;
+            background: hsl(217.2 32.6% 20%);
         }
 
         th.sortable::after {
@@ -120,18 +173,23 @@
         }
 
         tbody tr {
-            border-bottom: 1px solid #3a3a3a;
-            transition: background-color 0.15s;
+            border-bottom: 1px solid hsl(var(--border));
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         tbody tr:hover {
-            background-color: #353535;
+            background: hsl(217.2 32.6% 15%);
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
         }
 
         td {
-            padding: 16px;
+            padding: 18px 20px;
             font-size: 14px;
-            color: #e0e0e0;
+            color: hsl(var(--foreground));
+            vertical-align: middle;
         }
 
         .loading {
@@ -172,7 +230,7 @@
 
         .deal-name {
             font-weight: 600;
-            color: #33ccdd;
+            color: hsl(var(--foreground));
         }
 
         .stage-cell {
@@ -180,37 +238,40 @@
         }
 
         .stage-badge {
-            display: inline-block;
-            padding: 6px 14px;
-            border-radius: 16px;
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 8px;
             font-size: 13px;
-            font-weight: 600;
-            background-color: #1a3d4d;
-            color: #66ccff;
+            font-weight: 500;
+            background: hsl(217.2 32.6% 17.5%);
+            color: hsl(var(--foreground));
             cursor: pointer;
-            transition: all 0.2s;
-            border: 2px solid transparent;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid hsl(var(--border));
         }
 
         .stage-badge:hover {
-            background-color: #224d5f;
-            border-color: #33ccdd;
+            background: hsl(217.2 32.6% 20%);
+            border-color: hsl(215 20.2% 65.1%);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .stage-dropdown {
             position: absolute;
-            top: 100%;
+            top: calc(100% + 4px);
             left: 0;
-            margin-top: 5px;
-            background-color: #2d2d2d;
-            border: 1px solid #444;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            background: hsl(222.2 47.4% 11.2%);
+            border: 1px solid hsl(var(--border));
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
             z-index: 1000;
             min-width: 200px;
             max-height: 300px;
             overflow-y: auto;
             display: none;
+            padding: 4px;
+            animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .stage-dropdown.show {
@@ -218,25 +279,26 @@
         }
 
         .stage-option {
-            padding: 10px 14px;
+            padding: 10px 12px;
             cursor: pointer;
-            transition: background-color 0.15s;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
             font-size: 13px;
-            color: #e0e0e0;
-            border-bottom: 1px solid #3a3a3a;
+            color: hsl(var(--foreground));
+            border-radius: 8px;
+            margin-bottom: 2px;
         }
 
         .stage-option:last-child {
-            border-bottom: none;
+            margin-bottom: 0;
         }
 
         .stage-option:hover {
-            background-color: #3a3a3a;
+            background: hsl(217.2 32.6% 17.5%);
         }
 
         .stage-option.selected {
-            background-color: #1a3d4d;
-            color: #66ccff;
+            background: hsl(217.2 32.6% 17.5%);
+            color: hsl(var(--foreground));
             font-weight: 600;
         }
 
@@ -261,19 +323,19 @@
         }
 
         .section-header {
-            padding: 20px 30px;
-            background-color: #1a1a1a;
-            border-bottom: 2px solid #444;
+            padding: 24px 32px;
+            background: hsl(222.2 47.4% 11.2%);
+            border-bottom: 1px solid hsl(var(--border));
             display: flex;
             justify-content: space-between;
             align-items: center;
             cursor: pointer;
             user-select: none;
-            transition: background-color 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .section-header:hover {
-            background-color: #222;
+            background: hsl(217.2 32.6% 13%);
         }
 
         .section-header-left {
@@ -284,8 +346,8 @@
 
         .section-toggle {
             font-size: 14px;
-            color: #33ccdd;
-            transition: transform 0.2s;
+            color: hsl(215 20.2% 65.1%);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .section-toggle.collapsed {
@@ -293,17 +355,20 @@
         }
 
         .section-header h2 {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
-            color: #33ccdd;
+            color: hsl(var(--foreground));
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.05em;
         }
 
         .section-count {
             font-size: 14px;
-            color: #a0a0a0;
-            font-weight: normal;
+            color: hsl(var(--muted-foreground));
+            font-weight: 500;
+            background: hsl(217.2 32.6% 17.5%);
+            padding: 4px 12px;
+            border-radius: 12px;
         }
 
         .section-container {
@@ -354,21 +419,25 @@
             right: 8px;
             top: 50%;
             transform: translateY(-50%);
-            background-color: #1a3d4d;
-            color: #66ccff;
-            border: 1px solid #33ccdd;
-            border-radius: 4px;
-            width: 24px;
-            height: 24px;
+            background: hsl(217.2 32.6% 17.5%);
+            color: hsl(var(--foreground));
+            border: 1px solid hsl(var(--border));
+            border-radius: 6px;
+            width: 26px;
+            height: 26px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             line-height: 1;
             padding: 0;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .refresh-next-step-btn:hover {
-            background-color: #224d5f;
+            background: hsl(217.2 32.6% 20%);
+            border-color: hsl(215 20.2% 65.1%);
             transform: translateY(-50%) rotate(180deg);
         }
 
@@ -378,15 +447,15 @@
         }
 
         .refresh-deal-btn {
-            background-color: #1a3d4d;
-            color: #66ccff;
-            border: 1px solid #33ccdd;
-            border-radius: 4px;
-            width: 24px;
-            height: 24px;
-            font-size: 14px;
+            background: hsl(217.2 32.6% 17.5%);
+            color: hsl(var(--foreground));
+            border: 1px solid hsl(var(--border));
+            border-radius: 6px;
+            width: 26px;
+            height: 26px;
+            font-size: 13px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             margin-right: 8px;
             padding: 0;
             display: inline-flex;
@@ -396,7 +465,8 @@
         }
 
         .refresh-deal-btn:hover {
-            background-color: #224d5f;
+            background: hsl(217.2 32.6% 20%);
+            border-color: hsl(215 20.2% 65.1%);
             transform: rotate(180deg);
         }
 
@@ -405,25 +475,76 @@
             cursor: not-allowed;
         }
 
-        .generate-all-btn {
-            background-color: #1a3d4d;
-            color: #66ccff;
-            border: 1px solid #33ccdd;
-            padding: 10px 20px;
-            border-radius: 5px;
+        .column-visibility-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: hsl(222.2 47.4% 11.2%);
+            border: 1px solid hsl(var(--border));
+            border-radius: 12px;
+            padding: 8px;
+            min-width: 220px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .column-visibility-menu.show {
+            display: block;
+        }
+
+        .column-option {
+            padding: 10px 12px;
             cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-            margin-left: 10px;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 8px;
+            margin-bottom: 2px;
         }
 
-        .generate-all-btn:hover {
-            background-color: #224d5f;
+        .column-option:last-child {
+            margin-bottom: 0;
         }
 
-        .generate-all-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+        .column-option:hover {
+            background: hsl(217.2 32.6% 17.5%);
+        }
+
+        .column-option label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            font-weight: 500;
+            gap: 12px;
+        }
+
+        .column-option input[type="checkbox"] {
+            margin: 0;
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+            accent-color: hsl(var(--primary));
+        }
+
+        .header > div {
+            position: relative;
+        }
+
+        .column-hidden {
+            display: none !important;
         }
     </style>
 </head>
@@ -434,10 +555,59 @@
                 HubSpot Deals
                 <span class="deal-count" id="dealCount"></span>
             </h1>
-            <div>
+            <div class="header-actions">
                 <button class="generate-all-btn" id="generateAllBtn" onclick="generateAllNextSteps()">
                     Generate All Next Steps
                 </button>
+                <div style="position: relative;">
+                    <button class="refresh-btn" onclick="toggleColumnVisibilityMenu(event)">
+                        Columns ▼
+                    </button>
+                    <div class="column-visibility-menu" id="columnVisibilityMenu">
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-dealName" onchange="toggleColumn('dealName')" checked>
+                                Deal Name
+                            </label>
+                        </div>
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-companyName" onchange="toggleColumn('companyName')" checked>
+                                Company Name
+                            </label>
+                        </div>
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-primaryContact" onchange="toggleColumn('primaryContact')" checked>
+                                Primary Contact
+                            </label>
+                        </div>
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-dealStage" onchange="toggleColumn('dealStage')" checked>
+                                Deal Stage
+                            </label>
+                        </div>
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-daysInStage" onchange="toggleColumn('daysInStage')" checked>
+                                Days in Stage
+                            </label>
+                        </div>
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-lastMeetingDate" onchange="toggleColumn('lastMeetingDate')" checked>
+                                Last Meeting
+                            </label>
+                        </div>
+                        <div class="column-option">
+                            <label>
+                                <input type="checkbox" id="col-nextSteps" onchange="toggleColumn('nextSteps')" checked>
+                                Next Steps
+                            </label>
+                        </div>
+                    </div>
+                </div>
                 <button class="refresh-btn" id="refreshBtn" onclick="clearCacheAndRefresh()">
                     Refresh
                 </button>
@@ -467,6 +637,95 @@
             upcoming: true,
             past: true
         };
+
+        // Column visibility state - load from localStorage or use defaults
+        let columnVisibility = JSON.parse(localStorage.getItem('columnVisibility')) || {
+            dealName: true,
+            companyName: true,
+            primaryContact: true,
+            dealStage: true,
+            daysInStage: true,
+            lastMeetingDate: true,
+            nextSteps: true
+        };
+
+        // Initialize checkboxes with saved state
+        function initializeColumnVisibility() {
+            Object.keys(columnVisibility).forEach(columnName => {
+                const checkbox = document.getElementById(`col-${columnName}`);
+                if (checkbox) {
+                    checkbox.checked = columnVisibility[columnName];
+                }
+            });
+        }
+
+        // Toggle column visibility menu
+        function toggleColumnVisibilityMenu(event) {
+            event.stopPropagation();
+            const menu = document.getElementById('columnVisibilityMenu');
+            menu.classList.toggle('show');
+        }
+
+        // Toggle specific column visibility
+        function toggleColumn(columnName) {
+            columnVisibility[columnName] = !columnVisibility[columnName];
+
+            // Save to localStorage
+            localStorage.setItem('columnVisibility', JSON.stringify(columnVisibility));
+
+            // Re-render table to apply changes
+            renderTable();
+        }
+
+        // Apply column visibility classes to table
+        function applyColumnVisibility(table) {
+            const columnMap = {
+                dealName: 0,
+                companyName: 1,
+                primaryContact: 2,
+                dealStage: 3,
+                daysInStage: 4,
+                lastMeetingDate: 5,
+                nextSteps: 6
+            };
+
+            Object.keys(columnVisibility).forEach(columnName => {
+                const columnIndex = columnMap[columnName];
+                const isHidden = !columnVisibility[columnName];
+
+                // Apply to headers
+                const headers = table.querySelectorAll('thead th');
+                if (headers[columnIndex]) {
+                    if (isHidden) {
+                        headers[columnIndex].classList.add('column-hidden');
+                    } else {
+                        headers[columnIndex].classList.remove('column-hidden');
+                    }
+                }
+
+                // Apply to all rows
+                const rows = table.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells[columnIndex]) {
+                        if (isHidden) {
+                            cells[columnIndex].classList.add('column-hidden');
+                        } else {
+                            cells[columnIndex].classList.remove('column-hidden');
+                        }
+                    }
+                });
+            });
+        }
+
+        // Close menu when clicking outside
+        document.addEventListener('click', (event) => {
+            const menu = document.getElementById('columnVisibilityMenu');
+            if (menu && !event.target.closest('.column-visibility-menu') &&
+                !event.target.closest('button[onclick*="toggleColumnVisibilityMenu"]')) {
+                menu.classList.remove('show');
+            }
+        });
 
         async function loadStages() {
             try {
@@ -744,6 +1003,10 @@
 
             tableContainer.innerHTML = '';
             tableContainer.appendChild(container);
+
+            // Apply column visibility to all tables
+            const tables = tableContainer.querySelectorAll('table');
+            tables.forEach(table => applyColumnVisibility(table));
 
             // Close dropdown when clicking outside
             document.addEventListener('click', closeAllDropdowns);
@@ -1067,6 +1330,8 @@
             }
         }
 
+        // Initialize on page load
+        initializeColumnVisibility();
         loadDeals();
     </script>
 </body>
