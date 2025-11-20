@@ -666,7 +666,7 @@
                     <button class="refresh-btn" onclick="toggleColumnVisibilityMenu(event)">
                         Columns ▼
                     </button>
-                    <div class="column-visibility-menu" id="columnVisibilityMenu">
+                    <div class="column-visibility-menu" id="columnVisibilityMenu" onclick="event.stopPropagation()">
                         <div class="column-option">
                             <label>
                                 <input type="checkbox" id="col-dealName" onchange="toggleColumn('dealName')" checked>
