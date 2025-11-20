@@ -159,30 +159,30 @@ async function generateNextStep(engagements, dealName, companyName) {
   const daysSinceLastActivity = Math.floor((Date.now() - lastEngagement.timestamp) / (1000 * 60 * 60 * 24));
   const lastWasOutbound = lastEngagement.direction === 'outbound';
 
-  const prompt = `Analyze engagement data for ${companyName} - "${dealName}" to determine the single most critical next action.
+  const prompt = `Deal: ${companyName} - "${dealName}"
 
-Activity (PRIORITIZE NOTES FIRST, then emails):
+NOTES contain AI-generated meeting recaps with detailed next steps, action items, and commitments. Your job is to READ the note content and EXTRACT the single highest-priority action that will push this deal forward.
+
+Activity data:
 ${formattedEngagements}
 
 ${lastWasOutbound && daysSinceLastActivity >= 7 ? '\n⚠️ GHOSTED: Sent message ' + daysSinceLastActivity + 'd ago, no response.\n' : ''}
 
-ANALYSIS PRIORITY:
-1. NOTES FIRST - Read most recent note for action items, commitments, blockers
-2. Then emails - Context for decisions/commitments
-3. Focus on: what they need from us, what we're waiting for, specific deadlines
+CRITICAL INSTRUCTIONS:
+1. READ the actual content of notes - they contain specific next steps and action items
+2. EXTRACT the most important/urgent action item FROM the note
+3. DO NOT say "review note" or "check note" - that's useless
+4. Surface the ACTUAL action item mentioned in the note
+5. If multiple action items in note, pick the one that most directly advances the deal
+6. Include specifics: who, what, when, how much
 
-OUTPUT REQUIREMENTS:
-- Maximum 80 characters
-- Dense, information-rich text with specific details
-- Include key specifics: dates, deliverables, people, amounts when mentioned
-- Be terse but precise
-- Examples:
-  • "Send $50K proposal by Fri per Sarah's request in 11/18 note"
-  • "Chase VP approval on security addendum (waiting 12d)"
-  • "Demo product v2 features to eng team before EOQ"
-  • "Ghosted on pricing. Re-engage w/ ROI case study"
+BAD (useless): "Review 1/17 note for next steps"
+BAD (useless): "Follow up on meeting action items"
+GOOD: "Send pricing for 100-seat license by EOW (per CTO request)"
+GOOD: "Schedule tech demo with eng team before Jan 31 deadline"
+GOOD: "Get legal approval on data privacy terms (blocking signature)"
 
-80 CHARS MAX. Detail-dense action:`;
+OUTPUT: 80 chars max, terse, actionable, specific.`;
 
   try {
     const message = await anthropic.messages.create({
