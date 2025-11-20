@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HubSpot Deals Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1a1a1a;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: #2d2d2d;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: #0091ae;
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .refresh-btn {
+            background-color: white;
+            color: #0091ae;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background-color: #e0e0e0;
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            padding: 0 30px 30px 30px;
+        }
+
+        .section-container .table-container {
+            padding: 0;
+        }
+
+        .section-container table {
+            width: 100%;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border-spacing: 0;
+        }
+
+        thead {
+            background-color: #1a1a1a;
+            border-bottom: 2px solid #444;
+        }
+
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: #b0b0b0;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: background-color 0.2s;
+        }
+
+        th:hover {
+            background-color: #333;
+        }
+
+        th.sortable::after {
+            content: ' ↕';
+            opacity: 0.3;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        th.sorted-asc::after {
+            content: ' ↑';
+            opacity: 1;
+            color: #33ccdd;
+        }
+
+        th.sorted-desc::after {
+            content: ' ↓';
+            opacity: 1;
+            color: #33ccdd;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #3a3a3a;
+            transition: background-color 0.15s;
+        }
+
+        tbody tr:hover {
+            background-color: #353535;
+        }
+
+        td {
+            padding: 16px;
+            font-size: 14px;
+            color: #e0e0e0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0a0a0;
+        }
+
+        .spinner {
+            border: 3px solid #3a3a3a;
+            border-top: 3px solid #0091ae;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background-color: #3d1f1f;
+            color: #f8a5a5;
+            padding: 20px;
+            margin: 30px;
+            border-radius: 5px;
+            border: 1px solid #6b2b2b;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0a0a0;
+        }
+
+        .deal-name {
+            font-weight: 600;
+            color: #33ccdd;
+        }
+
+        .stage-cell {
+            position: relative;
+        }
+
+        .stage-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 600;
+            background-color: #1a3d4d;
+            color: #66ccff;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .stage-badge:hover {
+            background-color: #224d5f;
+            border-color: #33ccdd;
+        }
+
+        .stage-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 5px;
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 1000;
+            min-width: 200px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .stage-dropdown.show {
+            display: block;
+        }
+
+        .stage-option {
+            padding: 10px 14px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+            font-size: 13px;
+            color: #e0e0e0;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .stage-option:last-child {
+            border-bottom: none;
+        }
+
+        .stage-option:hover {
+            background-color: #3a3a3a;
+        }
+
+        .stage-option.selected {
+            background-color: #1a3d4d;
+            color: #66ccff;
+            font-weight: 600;
+        }
+
+        .stage-updating {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .date-cell {
+            color: #c0c0c0;
+        }
+
+        .no-meeting {
+            color: #666;
+            font-style: italic;
+        }
+
+        .deal-count {
+            font-size: 14px;
+            font-weight: normal;
+            opacity: 0.9;
+        }
+
+        .section-header {
+            padding: 20px 30px;
+            background-color: #1a1a1a;
+            border-bottom: 2px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #33ccdd;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section-count {
+            font-size: 14px;
+            color: #a0a0a0;
+            font-weight: normal;
+        }
+
+        .section-container {
+            margin-bottom: 0;
+        }
+
+        .section-container:last-child {
+            margin-bottom: 0;
+        }
+
+        .no-deals-section {
+            padding: 30px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                HubSpot Deals
+                <span class="deal-count" id="dealCount"></span>
+            </h1>
+            <button class="refresh-btn" id="refreshBtn" onclick="loadDeals()">
+                Refresh
+            </button>
+        </div>
+        <div class="table-container" id="tableContainer">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading deals from HubSpot...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let dealsData = [];
+        let availableStages = [];
+        let currentSort = { column: null, direction: 'asc' };
+        let currentDropdown = null;
+
+        async function loadStages() {
+            try {
+                const response = await fetch('/api/stages');
+                if (response.ok) {
+                    availableStages = await response.json();
+                }
+            } catch (error) {
+                console.error('Error loading stages:', error);
+            }
+        }
+
+        async function loadDeals() {
+            const tableContainer = document.getElementById('tableContainer');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const dealCount = document.getElementById('dealCount');
+
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Loading...';
+
+            tableContainer.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading deals from HubSpot...</p>
+                </div>
+            `;
+
+            try {
+                // Load stages if not already loaded
+                if (availableStages.length === 0) {
+                    await loadStages();
+                }
+
+                const response = await fetch('/api/deals');
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                dealsData = await response.json();
+
+                if (dealsData.length === 0) {
+                    tableContainer.innerHTML = `
+                        <div class="no-data">
+                            <p>No deals found in your HubSpot account.</p>
+                        </div>
+                    `;
+                    dealCount.textContent = '';
+                    return;
+                }
+
+                dealCount.textContent = `(${dealsData.length})`;
+                renderTable();
+
+            } catch (error) {
+                console.error('Error loading deals:', error);
+                tableContainer.innerHTML = `
+                    <div class="error">
+                        <strong>Error loading deals:</strong> ${escapeHtml(error.message)}
+                        <br><br>
+                        Please check your HubSpot API token in the .env file and ensure the server is running correctly.
+                    </div>
+                `;
+                dealCount.textContent = '';
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Refresh';
+            }
+        }
+
+        function sortData(column) {
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            const sorted = [...dealsData].sort((a, b) => {
+                let aVal, bVal;
+
+                switch (column) {
+                    case 'dealName':
+                        aVal = (a.dealName || '').toLowerCase();
+                        bVal = (b.dealName || '').toLowerCase();
+                        break;
+                    case 'companyName':
+                        aVal = (a.companyName || '').toLowerCase();
+                        bVal = (b.companyName || '').toLowerCase();
+                        break;
+                    case 'primaryContact':
+                        aVal = (a.primaryContact || '').toLowerCase();
+                        bVal = (b.primaryContact || '').toLowerCase();
+                        break;
+                    case 'dealStage':
+                        aVal = (a.dealStage || '').toLowerCase();
+                        bVal = (b.dealStage || '').toLowerCase();
+                        break;
+                    case 'daysInStage':
+                        aVal = a.daysInStage !== null ? a.daysInStage : -1;
+                        bVal = b.daysInStage !== null ? b.daysInStage : -1;
+                        break;
+                    case 'lastMeetingDate':
+                        aVal = a.lastMeetingDate ? new Date(a.lastMeetingDate).getTime() : 0;
+                        bVal = b.lastMeetingDate ? new Date(b.lastMeetingDate).getTime() : 0;
+                        break;
+                }
+
+                if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            dealsData = sorted;
+            renderTable();
+        }
+
+        function renderTable() {
+            const tableContainer = document.getElementById('tableContainer');
+            const now = new Date();
+
+            // Split deals into upcoming and past based on meeting date
+            const upcomingDeals = [];
+            const pastDeals = [];
+
+            dealsData.forEach(deal => {
+                if (deal.lastMeetingDate) {
+                    const meetingDate = new Date(deal.lastMeetingDate);
+                    if (meetingDate > now) {
+                        upcomingDeals.push(deal);
+                    } else {
+                        pastDeals.push(deal);
+                    }
+                } else {
+                    // Deals with no meetings go to past section
+                    pastDeals.push(deal);
+                }
+            });
+
+            const container = document.createElement('div');
+
+            // Render Upcoming section
+            container.innerHTML += `
+                <div class="section-container">
+                    <div class="section-header">
+                        <h2>Upcoming Meetings</h2>
+                        <span class="section-count">${upcomingDeals.length} deal${upcomingDeals.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    ${upcomingDeals.length > 0 ? `
+                        <div class="table-container">
+                            ${renderDealsTable(upcomingDeals, 0)}
+                        </div>
+                    ` : '<div class="no-deals-section">No upcoming meetings scheduled</div>'}
+                </div>
+            `;
+
+            // Render Past section
+            container.innerHTML += `
+                <div class="section-container">
+                    <div class="section-header">
+                        <h2>Past Meetings</h2>
+                        <span class="section-count">${pastDeals.length} deal${pastDeals.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    ${pastDeals.length > 0 ? `
+                        <div class="table-container">
+                            ${renderDealsTable(pastDeals, upcomingDeals.length)}
+                        </div>
+                    ` : '<div class="no-deals-section">No past meetings</div>'}
+                </div>
+            `;
+
+            tableContainer.innerHTML = '';
+            tableContainer.appendChild(container);
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', closeAllDropdowns);
+        }
+
+        function renderDealsTable(deals, startIndex) {
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="sortable ${currentSort.column === 'dealName' ? 'sorted-' + currentSort.direction : ''}"
+                                onclick="sortData('dealName')">Deal Name</th>
+                            <th class="sortable ${currentSort.column === 'companyName' ? 'sorted-' + currentSort.direction : ''}"
+                                onclick="sortData('companyName')">Company Name</th>
+                            <th class="sortable ${currentSort.column === 'primaryContact' ? 'sorted-' + currentSort.direction : ''}"
+                                onclick="sortData('primaryContact')">Primary Contact</th>
+                            <th class="sortable ${currentSort.column === 'dealStage' ? 'sorted-' + currentSort.direction : ''}"
+                                onclick="sortData('dealStage')">Deal Stage</th>
+                            <th class="sortable ${currentSort.column === 'daysInStage' ? 'sorted-' + currentSort.direction : ''}"
+                                onclick="sortData('daysInStage')">Days in Stage</th>
+                            <th class="sortable ${currentSort.column === 'lastMeetingDate' ? 'sorted-' + currentSort.direction : ''}"
+                                onclick="sortData('lastMeetingDate')">Last Meeting</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${deals.map((deal, localIndex) => {
+                            const globalIndex = dealsData.indexOf(deal);
+                            return `
+                                <tr>
+                                    <td class="deal-name">${escapeHtml(deal.dealName)}</td>
+                                    <td>${escapeHtml(deal.companyName)}</td>
+                                    <td>${escapeHtml(deal.primaryContact)}</td>
+                                    <td class="stage-cell">
+                                        <span class="stage-badge" onclick="toggleStageDropdown(${globalIndex}, event)">
+                                            ${escapeHtml(deal.dealStageLabel)}
+                                        </span>
+                                        <div class="stage-dropdown" id="dropdown-${globalIndex}">
+                                            ${availableStages.map(stage => `
+                                                <div class="stage-option ${stage.id === deal.dealStage ? 'selected' : ''}"
+                                                     onclick="updateDealStage(${globalIndex}, '${stage.id}', '${escapeHtml(stage.label)}')">
+                                                    ${escapeHtml(stage.label)}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </td>
+                                    <td class="date-cell">
+                                        ${deal.daysInStage !== null
+                                            ? `${deal.daysInStage} ${deal.daysInStage === 1 ? 'day' : 'days'}`
+                                            : '<span class="no-meeting">-</span>'
+                                        }
+                                    </td>
+                                    <td class="date-cell">
+                                        ${deal.lastMeetingDate
+                                            ? formatDateTime(deal.lastMeetingDate)
+                                            : '<span class="no-meeting">No meetings</span>'
+                                        }
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function toggleStageDropdown(index, event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById(`dropdown-${index}`);
+
+            // Close other dropdowns
+            if (currentDropdown && currentDropdown !== dropdown) {
+                currentDropdown.classList.remove('show');
+            }
+
+            // Toggle current dropdown
+            dropdown.classList.toggle('show');
+            currentDropdown = dropdown.classList.contains('show') ? dropdown : null;
+        }
+
+        function closeAllDropdowns() {
+            const dropdowns = document.querySelectorAll('.stage-dropdown');
+            dropdowns.forEach(d => d.classList.remove('show'));
+            currentDropdown = null;
+        }
+
+        async function updateDealStage(index, newStageId, newStageLabel) {
+            const deal = dealsData[index];
+            const oldStageId = deal.dealStage;
+            const oldStageLabel = deal.dealStageLabel;
+
+            // Close dropdown
+            closeAllDropdowns();
+
+            // Optimistically update UI
+            deal.dealStage = newStageId;
+            deal.dealStageLabel = newStageLabel;
+            renderTable();
+
+            try {
+                const response = await fetch(`/api/deals/${deal.id}/stage`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ stageId: newStageId })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update deal stage');
+                }
+
+                console.log('Deal stage updated successfully');
+
+            } catch (error) {
+                console.error('Error updating deal stage:', error);
+
+                // Revert on error
+                deal.dealStage = oldStageId;
+                deal.dealStageLabel = oldStageLabel;
+                renderTable();
+
+                alert('Failed to update deal stage. Please try again.');
+            }
+        }
+
+        function formatDateTime(isoString) {
+            const date = new Date(isoString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+            const dateStr = date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+
+            const timeStr = date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+
+            let relativeStr = '';
+            if (diffDays === 0) {
+                relativeStr = ' (Today)';
+            } else if (diffDays === 1) {
+                relativeStr = ' (Yesterday)';
+            } else if (diffDays < 7) {
+                relativeStr = ` (${diffDays} days ago)`;
+            }
+
+            return `${dateStr} at ${timeStr}${relativeStr}`;
+        }
+
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) {
+                return '';
+            }
+            return String(unsafe)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        loadDeals();
+    </script>
+</body>
+</html>

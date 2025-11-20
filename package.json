@@ -1,0 +1,20 @@
+{
+  "name": "hubspot-deals-viewer",
+  "version": "1.0.0",
+  "description": "A spreadsheet-like viewer for HubSpot deals with company info and last meeting dates",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pg": "^8.13.1"
+  }
+}
