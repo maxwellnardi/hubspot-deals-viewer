@@ -73,7 +73,8 @@ async function fetchCompanyEngagements(companyId) {
     const emails = processed.filter(e => e.type.includes('EMAIL')).slice(0, 3);
     const notes = processed.filter(e => e.type === 'NOTE').slice(0, 3);
 
-    return [...emails, ...notes].sort((a, b) => b.timestamp - a.timestamp);
+    // Return with notes first (prioritized), then emails
+    return [...notes, ...emails];
   } catch (error) {
     console.error(`Error fetching engagements for company ${companyId}:`, error.message);
     return [];
@@ -117,7 +118,8 @@ async function fetchContactEngagements(contactId) {
     const emails = processed.filter(e => e.type.includes('EMAIL')).slice(0, 3);
     const notes = processed.filter(e => e.type === 'NOTE').slice(0, 3);
 
-    return [...emails, ...notes].sort((a, b) => b.timestamp - a.timestamp);
+    // Return with notes first (prioritized), then emails
+    return [...notes, ...emails];
   } catch (error) {
     console.error(`Error fetching engagements for contact ${contactId}:`, error.message);
     return [];
@@ -157,33 +159,36 @@ async function generateNextStep(engagements, dealName, companyName) {
   const daysSinceLastActivity = Math.floor((Date.now() - lastEngagement.timestamp) / (1000 * 60 * 60 * 24));
   const lastWasOutbound = lastEngagement.direction === 'outbound';
 
-  const prompt = `You are analyzing sales engagement data for a deal with ${companyName} called "${dealName}". Your goal is to identify the single most important next step to move this deal forward and close it.
+  const prompt = `Analyze engagement data for ${companyName} - "${dealName}" to determine the single most critical next action.
 
-Recent Activity:
+Activity (PRIORITIZE NOTES FIRST, then emails):
 ${formattedEngagements}
 
-${lastWasOutbound && daysSinceLastActivity >= 7 ? '\n**IMPORTANT**: We sent the last message ' + daysSinceLastActivity + ' days ago with no response. This may indicate the prospect has gone cold.\n' : ''}
+${lastWasOutbound && daysSinceLastActivity >= 7 ? '\n⚠️ GHOSTED: Sent message ' + daysSinceLastActivity + 'd ago, no response.\n' : ''}
 
-Instructions:
-1. Focus on action items, commitments, or requests mentioned in notes
-2. If we're waiting for something specific from them, mention it
-3. If they're waiting for something from us, prioritize that
-4. If there's been no response to our outreach for 7+ days, suggest re-engagement
-5. Keep it actionable and specific to THIS deal
+ANALYSIS PRIORITY:
+1. NOTES FIRST - Read most recent note for action items, commitments, blockers
+2. Then emails - Context for decisions/commitments
+3. Focus on: what they need from us, what we're waiting for, specific deadlines
 
-Provide a ONE SENTENCE next step that is clear, actionable, and focused on closing the deal. Examples:
-- "Send proposal with updated pricing"
-- "Schedule technical demo with engineering team"
-- "Ghosted email. Re-engage with value proposition"
-- "Follow up on contract review timeline"
-- "Share case study for similar use case"
+OUTPUT REQUIREMENTS:
+- Maximum 80 characters
+- Dense, information-rich text with specific details
+- Include key specifics: dates, deliverables, people, amounts when mentioned
+- Be terse but precise
+- Examples:
+  • "Send $50K proposal by Fri per Sarah's request in 11/18 note"
+  • "Chase VP approval on security addendum (waiting 12d)"
+  • "Demo product v2 features to eng team before EOQ"
+  • "Ghosted on pricing. Re-engage w/ ROI case study"
 
-ONE SENTENCE ONLY:`;
+80 CHARS MAX. Detail-dense action:`;
 
   try {
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
-      max_tokens: 150,
+      max_tokens: 100,
+      temperature: 0.3, // Lower temperature for more focused, consistent output
       messages: [{
         role: 'user',
         content: prompt
