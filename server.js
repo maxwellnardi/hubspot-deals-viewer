@@ -497,6 +497,135 @@ app.post('/api/clear-cache', async (req, res) => {
   }
 });
 
+// Refresh a single deal - bypasses cache and fetches fresh data
+app.post('/api/deals/refresh/:dealId', async (req, res) => {
+  try {
+    const { dealId } = req.params;
+    console.log(`Refreshing deal ${dealId}...`);
+
+    // Fetch fresh deal data from HubSpot
+    const dealResponse = await hubspotApi.get(`/crm/v3/objects/deals/${dealId}`, {
+      params: {
+        properties: 'dealname,dealstage,createdate',
+        associations: 'companies,contacts'
+      }
+    });
+
+    const deal = dealResponse.data;
+    const stages = await getPipelineStages();
+
+    // Process the deal (same logic as in processDeals)
+    let companyName = 'N/A';
+    let companyId = null;
+    let lastMeetingDate = null;
+    let primaryContact = 'N/A';
+    let primaryContactId = null;
+    let daysInStage = null;
+
+    // Get company info (bypass cache)
+    if (deal.associations && deal.associations.companies) {
+      const companyAssociations = deal.associations.companies.results;
+      if (companyAssociations.length > 0) {
+        companyId = companyAssociations[0].id;
+        try {
+          const companyResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}`, {
+            params: { properties: 'name' }
+          });
+          companyName = companyResponse.data.properties.name || 'N/A';
+          // Update cache
+          await db.setCompanyCache(companyId, companyResponse.data.properties);
+
+          // Get fresh meeting data
+          lastMeetingDate = await getLastMeetingDate(companyId);
+        } catch (error) {
+          console.error(`Error fetching company ${companyId}:`, error.message);
+        }
+      }
+    }
+
+    // Get primary contact (bypass cache)
+    if (deal.associations && deal.associations.contacts) {
+      const contactAssociations = deal.associations.contacts.results;
+      if (contactAssociations.length > 0) {
+        primaryContactId = contactAssociations[0].id;
+        try {
+          const contactResponse = await hubspotApi.get(`/crm/v3/objects/contacts/${primaryContactId}`, {
+            params: { properties: 'firstname,lastname,email' }
+          });
+          const contact = contactResponse.data.properties;
+          // Update cache
+          await db.setContactCache(primaryContactId, contact);
+
+          if (contact.firstname || contact.lastname) {
+            primaryContact = `${contact.firstname || ''} ${contact.lastname || ''}`.trim();
+          } else if (contact.email) {
+            primaryContact = contact.email;
+          }
+        } catch (error) {
+          console.error(`Error fetching contact ${primaryContactId}:`, error.message);
+        }
+      }
+    }
+
+    const stageId = deal.properties.dealstage;
+    const stageInfo = stages.stagesMap[stageId];
+
+    // Calculate days in current stage
+    try {
+      const dealWithPropertiesResponse = await hubspotApi.get(`/crm/v3/objects/deals/${dealId}`, {
+        params: { propertiesWithHistory: 'dealstage' }
+      });
+
+      const stageHistory = dealWithPropertiesResponse.data.propertiesWithHistory?.dealstage;
+      if (stageHistory && stageHistory.length > 0) {
+        const sortedHistory = [...stageHistory].sort((a, b) =>
+          new Date(b.timestamp) - new Date(a.timestamp)
+        );
+        const currentStageEntry = sortedHistory.find(entry => entry.value === stageId);
+
+        if (currentStageEntry && currentStageEntry.timestamp) {
+          const enteredDate = new Date(currentStageEntry.timestamp);
+          const now = new Date();
+          const diffMs = now - enteredDate;
+          daysInStage = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching stage history for deal ${dealId}:`, error.message);
+    }
+
+    const updatedDeal = {
+      id: dealId,
+      dealName: deal.properties.dealname || 'Untitled Deal',
+      companyName: companyName,
+      companyId: companyId,
+      dealStage: stageId,
+      dealStageLabel: stageInfo ? stageInfo.label : (stageId || 'N/A'),
+      lastMeetingDate: lastMeetingDate,
+      primaryContact: primaryContact,
+      primaryContactId: primaryContactId,
+      daysInStage: daysInStage
+    };
+
+    // Optionally regenerate next steps
+    let nextStep = null;
+    if (companyId || primaryContactId) {
+      const nextSteps = require('./nextSteps');
+      nextStep = await nextSteps.generateNextStepForDeal(updatedDeal, primaryContactId, true);
+    }
+
+    res.json({
+      success: true,
+      deal: updatedDeal,
+      nextStep: nextStep
+    });
+
+  } catch (error) {
+    console.error(`Error refreshing deal:`, error.message);
+    res.status(500).json({ error: 'Failed to refresh deal', details: error.message });
+  }
+});
+
 // Initialize database and start server
 async function startServer() {
   try {

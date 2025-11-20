@@ -377,6 +377,34 @@
             cursor: not-allowed;
         }
 
+        .refresh-deal-btn {
+            background-color: #1a3d4d;
+            color: #66ccff;
+            border: 1px solid #33ccdd;
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 8px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+        }
+
+        .refresh-deal-btn:hover {
+            background-color: #224d5f;
+            transform: rotate(180deg);
+        }
+
+        .refresh-deal-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .generate-all-btn {
             background-color: #1a3d4d;
             color: #66ccff;
@@ -747,7 +775,12 @@
                             const globalIndex = dealsData.indexOf(deal);
                             return `
                                 <tr>
-                                    <td class="deal-name">${escapeHtml(deal.dealName)}</td>
+                                    <td class="deal-name">
+                                        <button class="refresh-deal-btn" onclick="refreshDeal('${deal.id}', ${globalIndex})" title="Refresh all data for this deal">
+                                            ↻
+                                        </button>
+                                        ${escapeHtml(deal.dealName)}
+                                    </td>
                                     <td>${escapeHtml(deal.companyName)}</td>
                                     <td>${escapeHtml(deal.primaryContact)}</td>
                                     <td class="stage-cell">
@@ -902,6 +935,47 @@
         }
 
         // Refresh next step for a single deal
+        async function refreshDeal(dealId, dealIndex) {
+            const button = event.target;
+            button.disabled = true;
+            button.innerHTML = '⟳';
+
+            try {
+                // Fetch fresh deal data
+                const response = await fetch(`/api/deals/refresh/${dealId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to refresh deal');
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Update the deal in dealsData
+                    dealsData[dealIndex] = result.deal;
+
+                    // Update next steps data if included
+                    if (result.nextStep) {
+                        nextStepsData[dealId] = { nextStep: result.nextStep };
+                    }
+
+                    // Re-render the table
+                    renderTable();
+                } else {
+                    alert('Failed to refresh deal data');
+                }
+            } catch (error) {
+                console.error('Error refreshing deal:', error);
+                alert('Error refreshing deal data');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '↻';
+            }
+        }
+
         async function refreshNextStep(dealId, dealIndex) {
             const button = event.target;
             const textSpan = document.getElementById(`next-step-${dealId}`);
