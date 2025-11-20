@@ -33,13 +33,8 @@ if (!isPrivateAppToken) {
 }
 
 async function getLastMeetingDate(companyId) {
-  // Check cache first - use shorter duration for meetings to catch new ones quickly
-  const cached = await db.getMeetingCache(companyId, MEETING_CACHE_DURATION);
-  if (cached !== null) {
-    return cached;
-  }
-
   try {
+    // First, get meeting IDs
     const response = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}/associations/meetings`);
 
     if (!response.data.results || response.data.results.length === 0) {
@@ -47,11 +42,29 @@ async function getLastMeetingDate(companyId) {
       return null;
     }
 
-    const meetingIds = response.data.results.map(m => m.id);
+    const currentMeetingIds = response.data.results.map(m => m.id).sort();
 
-    // Process meetings in smaller batches to avoid rate limits
+    // Check cache for this company's meetings
+    const cached = await db.getMeetingCache(companyId, Infinity); // Don't expire based on time
+
+    // If cached and meeting IDs haven't changed, return cached result
+    if (cached && cached.meetingIds) {
+      try {
+        const cachedMeetingIds = JSON.parse(cached.meetingIds || '[]').sort();
+        if (JSON.stringify(currentMeetingIds) === JSON.stringify(cachedMeetingIds)) {
+          console.log(`No meeting changes for company ${companyId}, using cache`);
+          return cached.lastMeetingDate;
+        }
+      } catch (e) {
+        // Invalid JSON, treat as no cache
+        console.log(`Invalid cached meeting IDs for company ${companyId}`);
+      }
+    }
+
+    // Meeting IDs changed or no cache - fetch meeting details
+    console.log(`Meetings changed for company ${companyId}, fetching details...`);
     const meetings = await processBatch(
-      meetingIds,
+      currentMeetingIds,
       async (id) => {
         try {
           const meetingResponse = await hubspotApi.get(`/crm/v3/objects/meetings/${id}`, {
@@ -77,13 +90,13 @@ async function getLastMeetingDate(companyId) {
       .map(date => new Date(date));
 
     if (meetingDates.length === 0) {
-      await db.setMeetingCache(companyId, null);
+      await db.setMeetingCache(companyId, null, JSON.stringify(currentMeetingIds));
       return null;
     }
 
     const lastMeetingDate = new Date(Math.max(...meetingDates));
     const lastMeetingDateISO = lastMeetingDate.toISOString();
-    await db.setMeetingCache(companyId, lastMeetingDateISO);
+    await db.setMeetingCache(companyId, lastMeetingDateISO, JSON.stringify(currentMeetingIds));
     return lastMeetingDateISO;
 
   } catch (error) {
@@ -328,34 +341,178 @@ async function refreshDealsInBackground() {
   }
 }
 
-// Endpoint to get all deals with caching
+// Smart refresh: only fetch deals that have changed
+async function fetchChangedDeals() {
+  console.log('Checking for changed deals...');
+
+  // Fetch minimal deal data (just IDs and lastModifiedDate)
+  const dealsResponse = await hubspotApi.get('/crm/v3/objects/deals', {
+    params: {
+      limit: 100,
+      properties: 'hs_lastmodifieddate'
+    }
+  });
+
+  const currentDeals = dealsResponse.data.results;
+  const cachedDeals = await db.getDealsCache();
+
+  if (!cachedDeals || !cachedDeals.data) {
+    console.log('No cache found, fetching all deals');
+    return await fetchAllDeals();
+  }
+
+  // Create a map of cached deals by ID with their last modified dates
+  const cachedDealsMap = new Map(
+    cachedDeals.data.map(deal => [deal.id, deal.lastModifiedDate])
+  );
+
+  // Find deals that are new or modified
+  const changedDealIds = currentDeals.filter(deal => {
+    const dealModified = deal.properties.hs_lastmodifieddate;
+    const cachedModified = cachedDealsMap.get(deal.id);
+    return !cachedModified || dealModified !== cachedModified;
+  }).map(d => d.id);
+
+  // Find deleted deals (in cache but not in current)
+  const currentDealIds = new Set(currentDeals.map(d => d.id));
+  const deletedDealIds = cachedDeals.data
+    .filter(deal => !currentDealIds.has(deal.id))
+    .map(d => d.id);
+
+  if (changedDealIds.length === 0 && deletedDealIds.length === 0) {
+    console.log('No changes detected, returning cached data');
+    return cachedDeals.data;
+  }
+
+  console.log(`Found ${changedDealIds.length} changed deals and ${deletedDealIds.length} deleted deals`);
+
+  // Fetch full details only for changed deals
+  const stages = await getPipelineStages();
+  const updatedDeals = await processBatch(changedDealIds, async (dealId) => {
+    try {
+      const dealResponse = await hubspotApi.get(`/crm/v3/objects/deals/${dealId}`, {
+        params: {
+          properties: 'dealname,dealstage,createdate,hs_lastmodifieddate',
+          associations: 'companies,contacts'
+        }
+      });
+      const deal = dealResponse.data;
+
+      // Process this single deal
+      let companyName = 'N/A';
+      let companyId = null;
+      let lastMeetingDate = null;
+      let primaryContact = 'N/A';
+      let primaryContactId = null;
+
+      if (deal.associations?.companies?.results?.length > 0) {
+        companyId = deal.associations.companies.results[0].id;
+        const cachedCompany = await db.getCompanyCache(companyId, CACHE_ITEM_DURATION);
+        if (cachedCompany) {
+          companyName = cachedCompany.name;
+        } else {
+          const companyResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}`, {
+            params: { properties: 'name' }
+          });
+          companyName = companyResponse.data.properties.name || 'N/A';
+          await db.setCompanyCache(companyId, { name: companyName });
+        }
+        lastMeetingDate = await getLastMeetingDate(companyId);
+      }
+
+      if (deal.associations?.contacts?.results?.length > 0) {
+        primaryContactId = deal.associations.contacts.results[0].id;
+        const cachedContact = await db.getContactCache(primaryContactId, CACHE_ITEM_DURATION);
+        if (cachedContact) {
+          primaryContact = cachedContact.name;
+        } else {
+          const contactResponse = await hubspotApi.get(`/crm/v3/objects/contacts/${primaryContactId}`, {
+            params: { properties: 'firstname,lastname' }
+          });
+          const firstName = contactResponse.data.properties.firstname || '';
+          const lastName = contactResponse.data.properties.lastname || '';
+          primaryContact = `${firstName} ${lastName}`.trim() || 'N/A';
+          await db.setContactCache(primaryContactId, { name: primaryContact });
+        }
+      }
+
+      const stageHistory = await hubspotApi.get(`/crm/v3/objects/deals/${deal.id}`, {
+        params: { properties: 'hs_date_entered_' + deal.properties.dealstage }
+      });
+
+      const stageEntryProperty = 'hs_date_entered_' + deal.properties.dealstage;
+      const stageEntryDate = stageHistory.data.properties[stageEntryProperty];
+      let daysInStage = null;
+      if (stageEntryDate) {
+        const entryDate = new Date(stageEntryDate);
+        const now = new Date();
+        daysInStage = Math.floor((now - entryDate) / (1000 * 60 * 60 * 24));
+      }
+
+      return {
+        id: deal.id,
+        dealName: deal.properties.dealname || 'Untitled Deal',
+        dealStage: deal.properties.dealstage,
+        dealStageLabel: stages.stagesMap[deal.properties.dealstage]?.label || deal.properties.dealstage,
+        companyName,
+        companyId,
+        lastMeetingDate,
+        primaryContact,
+        primaryContactId,
+        lastModifiedDate: deal.properties.hs_lastmodifieddate,
+        daysInStage: daysInStage
+      };
+    } catch (error) {
+      console.error(`Error fetching deal ${dealId}:`, error.message);
+      return null;
+    }
+  }, BATCH_SIZE, BATCH_DELAY);
+
+  // Merge updated deals with cached deals
+  const updatedDealsMap = new Map(updatedDeals.filter(d => d !== null).map(d => [d.id, d]));
+  const deletedSet = new Set(deletedDealIds);
+
+  const mergedDeals = cachedDeals.data
+    .filter(deal => !deletedSet.has(deal.id))  // Remove deleted deals
+    .map(deal => updatedDealsMap.get(deal.id) || deal);  // Update changed deals
+
+  // Add any new deals that weren't in cache
+  updatedDeals.forEach(deal => {
+    if (deal && !cachedDealsMap.has(deal.id)) {
+      mergedDeals.push(deal);
+    }
+  });
+
+  console.log(`Updated ${updatedDeals.length} deals, total: ${mergedDeals.length}`);
+  return mergedDeals;
+}
+
+// Endpoint to get all deals with smart diff-based caching
 app.get('/api/deals', async (req, res) => {
   try {
-    const now = Date.now();
-    const dealsCache = await db.getDealsCache();
-    const cacheAge = dealsCache && dealsCache.lastFetched ? now - dealsCache.lastFetched : Infinity;
+    const cachedDeals = await db.getDealsCache();
 
-    // If cache is fresh, return it immediately
-    if (dealsCache && dealsCache.data && cacheAge < CACHE_DURATION) {
-      console.log(`Returning cached data (age: ${Math.round(cacheAge / 1000)}s)`);
-      return res.json(dealsCache.data);
+    // If no cache exists, fetch all deals
+    if (!cachedDeals || !cachedDeals.data) {
+      console.log('No cache exists, fetching all deals...');
+      const freshData = await fetchAllDeals();
+      await db.setDealsCache(freshData);
+      return res.json(freshData);
     }
 
-    // If cache is stale but exists, return it and refresh in background
-    if (dealsCache && dealsCache.data && cacheAge >= CACHE_DURATION) {
-      console.log('Cache is stale, returning cached data and refreshing in background');
-      res.json(dealsCache.data);
+    // Return cached data immediately
+    console.log('Returning cached data and checking for changes in background');
+    res.json(cachedDeals.data);
 
-      // Trigger background refresh (don't await)
-      refreshDealsInBackground();
-      return;
-    }
-
-    // No cache exists, fetch fresh data
-    console.log('No cache exists, fetching fresh data...');
-    const freshData = await fetchAllDeals();
-    await db.setDealsCache(freshData);
-    res.json(freshData);
+    // Check for changes in background (non-blocking)
+    fetchChangedDeals()
+      .then(async (updatedData) => {
+        await db.setDealsCache(updatedData);
+        console.log('Background update completed');
+      })
+      .catch(error => {
+        console.error('Background update failed:', error.message);
+      });
 
   } catch (error) {
     console.error('Error fetching deals:', error.response?.data || error.message);

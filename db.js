@@ -64,6 +64,7 @@ async function initializeDatabase() {
         CREATE TABLE IF NOT EXISTS cache_meetings (
           company_id VARCHAR(255) PRIMARY KEY,
           last_meeting_date TIMESTAMP,
+          meeting_ids TEXT,
           cached_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
 
@@ -204,11 +205,11 @@ async function getMeetingCache(companyId, maxAgeMs) {
     if (!cached) return null;
     const age = Date.now() - cached.cachedAt;
     if (age > maxAgeMs) return null;
-    return cached.lastMeetingDate;
+    return { lastMeetingDate: cached.lastMeetingDate, meetingIds: cached.meetingIds };
   }
 
   const result = await pool.query(
-    'SELECT last_meeting_date, cached_at FROM cache_meetings WHERE company_id = $1',
+    'SELECT last_meeting_date, meeting_ids, cached_at FROM cache_meetings WHERE company_id = $1',
     [companyId]
   );
 
@@ -219,21 +220,24 @@ async function getMeetingCache(companyId, maxAgeMs) {
 
   if (age > maxAgeMs) return null;
 
-  return result.rows[0].last_meeting_date ? result.rows[0].last_meeting_date.toISOString() : null;
+  return {
+    lastMeetingDate: result.rows[0].last_meeting_date ? result.rows[0].last_meeting_date.toISOString() : null,
+    meetingIds: result.rows[0].meeting_ids
+  };
 }
 
-async function setMeetingCache(companyId, lastMeetingDate) {
+async function setMeetingCache(companyId, lastMeetingDate, meetingIds = null) {
   if (!USE_DATABASE) {
-    memoryStore.meetings.set(companyId, { lastMeetingDate, cachedAt: Date.now() });
+    memoryStore.meetings.set(companyId, { lastMeetingDate, meetingIds, cachedAt: Date.now() });
     return;
   }
 
   await pool.query(
-    `INSERT INTO cache_meetings (company_id, last_meeting_date, cached_at)
-     VALUES ($1, $2, NOW())
+    `INSERT INTO cache_meetings (company_id, last_meeting_date, meeting_ids, cached_at)
+     VALUES ($1, $2, $3, NOW())
      ON CONFLICT (company_id)
-     DO UPDATE SET last_meeting_date = $2, cached_at = NOW()`,
-    [companyId, lastMeetingDate]
+     DO UPDATE SET last_meeting_date = $2, meeting_ids = $3, cached_at = NOW()`,
+    [companyId, lastMeetingDate, meetingIds]
   );
 }
 
