@@ -546,6 +546,109 @@
         .column-hidden {
             display: none !important;
         }
+
+        /* Inactive deal styling */
+        tbody tr.inactive-deal {
+            opacity: 0.6;
+        }
+
+        tbody tr.inactive-deal td {
+            color: hsl(215 20.2% 45%) !important;
+        }
+
+        tbody tr.inactive-deal .deal-name {
+            color: hsl(215 20.2% 45%) !important;
+        }
+
+        /* Stage suggestion styling */
+        .stage-suggestion-container {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stage-badge.has-suggestion {
+            border: 2px solid #a855f7;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                border-color: #a855f7;
+                box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4);
+            }
+            50% {
+                border-color: #c084fc;
+                box-shadow: 0 0 0 4px rgba(168, 85, 247, 0);
+            }
+        }
+
+        .stage-suggestion {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background: rgba(168, 85, 247, 0.1);
+            border: 1px solid #a855f7;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #c084fc;
+            font-weight: 500;
+        }
+
+        .stage-suggestion-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.8;
+        }
+
+        .stage-suggestion-actions {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 4px;
+        }
+
+        .suggestion-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid;
+        }
+
+        .suggestion-btn.accept {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: #22c55e;
+            color: #22c55e;
+        }
+
+        .suggestion-btn.accept:hover {
+            background: rgba(34, 197, 94, 0.2);
+            transform: scale(1.1);
+        }
+
+        .suggestion-btn.reject {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .suggestion-btn.reject:hover {
+            background: rgba(239, 68, 68, 0.2);
+            transform: scale(1.1);
+        }
+
+        .suggestion-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
     </style>
 </head>
 <body>
@@ -1036,8 +1139,23 @@
                     <tbody>
                         ${deals.map((deal, localIndex) => {
                             const globalIndex = dealsData.indexOf(deal);
+                            const nextStep = nextStepsData[deal.id]?.nextStep || '';
+                            const isInactive = nextStep.toLowerCase().includes('no recent activity');
+
+                            // Find reengage/cold stage
+                            const reengageStage = availableStages.find(s =>
+                                s.label.toLowerCase().includes('reengage') ||
+                                s.label.toLowerCase().includes('cold') ||
+                                s.label.toLowerCase().includes('re-engage')
+                            );
+
+                            // Check if user has rejected this suggestion
+                            const hasRejectedSuggestion = deal.rejectedSuggestions && deal.rejectedSuggestions.includes('reengage');
+
+                            const shouldSuggestStage = isInactive && reengageStage && deal.dealStage !== reengageStage.id && !hasRejectedSuggestion;
+
                             return `
-                                <tr>
+                                <tr class="${isInactive ? 'inactive-deal' : ''}" id="deal-row-${globalIndex}">
                                     <td class="deal-name">
                                         <button class="refresh-deal-btn" onclick="refreshDeal('${deal.id}', ${globalIndex})" title="Refresh all data for this deal">
                                             ↻
@@ -1047,9 +1165,29 @@
                                     <td>${escapeHtml(deal.companyName)}</td>
                                     <td>${escapeHtml(deal.primaryContact)}</td>
                                     <td class="stage-cell">
-                                        <span class="stage-badge" onclick="toggleStageDropdown(${globalIndex}, event)">
-                                            ${escapeHtml(deal.dealStageLabel)}
-                                        </span>
+                                        <div class="stage-suggestion-container">
+                                            <span class="stage-badge ${shouldSuggestStage ? 'has-suggestion' : ''}" onclick="toggleStageDropdown(${globalIndex}, event)">
+                                                ${escapeHtml(deal.dealStageLabel)}
+                                            </span>
+                                            ${shouldSuggestStage ? `
+                                                <div class="stage-suggestion">
+                                                    <span class="stage-suggestion-label">Suggest:</span>
+                                                    <span>${escapeHtml(reengageStage.label)}</span>
+                                                    <div class="stage-suggestion-actions">
+                                                        <button class="suggestion-btn accept"
+                                                                onclick="acceptStageSuggestion(${globalIndex}, '${reengageStage.id}', '${escapeHtml(reengageStage.label)}')"
+                                                                title="Accept suggestion">
+                                                            ✓
+                                                        </button>
+                                                        <button class="suggestion-btn reject"
+                                                                onclick="rejectStageSuggestion(${globalIndex})"
+                                                                title="Dismiss suggestion">
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                        </div>
                                         <div class="stage-dropdown" id="dropdown-${globalIndex}">
                                             ${availableStages.map(stage => `
                                                 <div class="stage-option ${stage.id === deal.dealStage ? 'selected' : ''}"
@@ -1145,6 +1283,22 @@
 
                 alert('Failed to update deal stage. Please try again.');
             }
+        }
+
+        // Accept stage suggestion for inactive deal
+        async function acceptStageSuggestion(index, suggestedStageId, suggestedStageLabel) {
+            await updateDealStage(index, suggestedStageId, suggestedStageLabel);
+        }
+
+        // Reject stage suggestion (just re-render to remove suggestion UI)
+        function rejectStageSuggestion(index) {
+            // Mark the deal as having rejected the suggestion
+            const deal = dealsData[index];
+            if (!deal.rejectedSuggestions) {
+                deal.rejectedSuggestions = [];
+            }
+            deal.rejectedSuggestions.push('reengage');
+            renderTable();
         }
 
         function formatDateTime(isoString) {
