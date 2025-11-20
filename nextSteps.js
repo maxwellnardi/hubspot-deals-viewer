@@ -205,17 +205,21 @@ async function generateNextStepForDeal(deal, contactId = null, forceRefresh = fa
   const companyId = deal.companyId;
   const dealId = deal.id;
 
-  if (!companyId) {
-    console.log(`No company ID for deal ${dealId}`);
-    return null;
+  // If no company or contact, we can't generate next steps
+  if (!companyId && !contactId) {
+    console.log(`No company or contact ID for deal ${dealId}`);
+    return "No company or contact associated";
   }
+
+  // Use companyId as the storage key, or contactId as fallback
+  const storageId = companyId || contactId;
 
   // Check if we need to refresh
   if (!forceRefresh) {
     const existingNextStep = await db.getNextStep(dealId);
     if (existingNextStep) {
       const cachedEngagementTimestamp = existingNextStep.last_engagement_timestamp;
-      const latestEngagementTimestamp = await db.getLastEngagementTimestamp(companyId);
+      const latestEngagementTimestamp = await db.getLastEngagementTimestamp(storageId);
 
       // If no new engagements, return cached next step
       if (cachedEngagementTimestamp && latestEngagementTimestamp &&
@@ -225,26 +229,29 @@ async function generateNextStepForDeal(deal, contactId = null, forceRefresh = fa
     }
   }
 
-  // Fetch fresh engagements
-  let engagements = await fetchCompanyEngagements(companyId);
+  // Fetch fresh engagements - try company first, then contact
+  let engagements = [];
+  if (companyId) {
+    engagements = await fetchCompanyEngagements(companyId);
+  }
 
-  // Fallback to contact engagements if company has none
+  // Fallback to contact engagements if company has none or no company exists
   if (engagements.length === 0 && contactId) {
-    console.log(`No company engagements, trying contact ${contactId}`);
+    console.log(`${companyId ? 'No company engagements' : 'No company'}, trying contact ${contactId}`);
     engagements = await fetchContactEngagements(contactId);
   }
 
-  // Store engagements in database
+  // Store engagements in database using the storage ID
   for (const engagement of engagements) {
-    await db.saveEngagement(companyId, engagement);
+    await db.saveEngagement(storageId, engagement);
   }
 
   // Generate next step with AI
-  const nextStep = await generateNextStep(engagements, deal.dealName, deal.companyName);
+  const nextStep = await generateNextStep(engagements, deal.dealName, deal.companyName || 'Unknown Company');
 
   // Save next step to database
   const lastEngagementTimestamp = engagements.length > 0 ? engagements[0].timestamp : null;
-  await db.saveNextStep(dealId, companyId, nextStep, lastEngagementTimestamp);
+  await db.saveNextStep(dealId, storageId, nextStep, lastEngagementTimestamp);
 
   return nextStep;
 }
