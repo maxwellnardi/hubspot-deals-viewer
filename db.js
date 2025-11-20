@@ -1,29 +1,51 @@
 const { Pool } = require('pg');
 
-// Create PostgreSQL connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+// Check if database is configured
+const USE_DATABASE = !!process.env.DATABASE_URL;
 
-// Test database connection
-pool.on('connect', () => {
-  console.log('Connected to PostgreSQL database');
-});
+// In-memory storage for local development
+const memoryStore = {
+  deals: null,
+  companies: new Map(),
+  meetings: new Map(),
+  contacts: new Map(),
+  pipelineStages: null,
+  engagements: new Map(),
+  nextSteps: new Map()
+};
 
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle PostgreSQL client', err);
-});
+// Create PostgreSQL connection pool only if DATABASE_URL is set
+let pool = null;
+if (USE_DATABASE) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  });
+
+  pool.on('connect', () => {
+    console.log('Connected to PostgreSQL database');
+  });
+
+  pool.on('error', (err) => {
+    console.error('Unexpected error on idle PostgreSQL client', err);
+  });
+} else {
+  console.log('Using in-memory storage (DATABASE_URL not configured)');
+}
 
 // Initialize database schema
 async function initializeDatabase() {
+  if (!USE_DATABASE) {
+    console.log('In-memory storage initialized');
+    return;
+  }
+
   try {
     const client = await pool.connect();
     try {
-      // Create tables if they don't exist
       await client.query(`
         CREATE TABLE IF NOT EXISTS cache_deals (
           id SERIAL PRIMARY KEY,
@@ -99,6 +121,10 @@ async function initializeDatabase() {
 
 // Deals cache operations
 async function getDealsCache() {
+  if (!USE_DATABASE) {
+    return memoryStore.deals;
+  }
+
   const result = await pool.query(
     'SELECT data, last_fetched FROM cache_deals ORDER BY last_fetched DESC LIMIT 1'
   );
@@ -110,7 +136,11 @@ async function getDealsCache() {
 }
 
 async function setDealsCache(data) {
-  // Delete old entries and insert new one
+  if (!USE_DATABASE) {
+    memoryStore.deals = { data, lastFetched: Date.now() };
+    return;
+  }
+
   await pool.query('DELETE FROM cache_deals');
   await pool.query(
     'INSERT INTO cache_deals (data, last_fetched) VALUES ($1, NOW())',
@@ -119,11 +149,24 @@ async function setDealsCache(data) {
 }
 
 async function clearDealsCache() {
+  if (!USE_DATABASE) {
+    memoryStore.deals = null;
+    return;
+  }
+
   await pool.query('DELETE FROM cache_deals');
 }
 
 // Company cache operations
 async function getCompanyCache(companyId, maxAgeMs) {
+  if (!USE_DATABASE) {
+    const cached = memoryStore.companies.get(companyId);
+    if (!cached) return null;
+    const age = Date.now() - cached.cachedAt;
+    if (age > maxAgeMs) return null;
+    return cached.data;
+  }
+
   const result = await pool.query(
     'SELECT data, cached_at FROM cache_companies WHERE company_id = $1',
     [companyId]
@@ -140,6 +183,11 @@ async function getCompanyCache(companyId, maxAgeMs) {
 }
 
 async function setCompanyCache(companyId, data) {
+  if (!USE_DATABASE) {
+    memoryStore.companies.set(companyId, { data, cachedAt: Date.now() });
+    return;
+  }
+
   await pool.query(
     `INSERT INTO cache_companies (company_id, data, cached_at)
      VALUES ($1, $2, NOW())
@@ -151,6 +199,14 @@ async function setCompanyCache(companyId, data) {
 
 // Meeting cache operations
 async function getMeetingCache(companyId, maxAgeMs) {
+  if (!USE_DATABASE) {
+    const cached = memoryStore.meetings.get(companyId);
+    if (!cached) return null;
+    const age = Date.now() - cached.cachedAt;
+    if (age > maxAgeMs) return null;
+    return cached.lastMeetingDate;
+  }
+
   const result = await pool.query(
     'SELECT last_meeting_date, cached_at FROM cache_meetings WHERE company_id = $1',
     [companyId]
@@ -167,6 +223,11 @@ async function getMeetingCache(companyId, maxAgeMs) {
 }
 
 async function setMeetingCache(companyId, lastMeetingDate) {
+  if (!USE_DATABASE) {
+    memoryStore.meetings.set(companyId, { lastMeetingDate, cachedAt: Date.now() });
+    return;
+  }
+
   await pool.query(
     `INSERT INTO cache_meetings (company_id, last_meeting_date, cached_at)
      VALUES ($1, $2, NOW())
@@ -178,6 +239,14 @@ async function setMeetingCache(companyId, lastMeetingDate) {
 
 // Contact cache operations
 async function getContactCache(contactId, maxAgeMs) {
+  if (!USE_DATABASE) {
+    const cached = memoryStore.contacts.get(contactId);
+    if (!cached) return null;
+    const age = Date.now() - cached.cachedAt;
+    if (age > maxAgeMs) return null;
+    return cached.data;
+  }
+
   const result = await pool.query(
     'SELECT data, cached_at FROM cache_contacts WHERE contact_id = $1',
     [contactId]
@@ -194,6 +263,11 @@ async function getContactCache(contactId, maxAgeMs) {
 }
 
 async function setContactCache(contactId, data) {
+  if (!USE_DATABASE) {
+    memoryStore.contacts.set(contactId, { data, cachedAt: Date.now() });
+    return;
+  }
+
   await pool.query(
     `INSERT INTO cache_contacts (contact_id, data, cached_at)
      VALUES ($1, $2, NOW())
@@ -205,6 +279,10 @@ async function setContactCache(contactId, data) {
 
 // Pipeline stages cache operations
 async function getPipelineStagesCache() {
+  if (!USE_DATABASE) {
+    return memoryStore.pipelineStages;
+  }
+
   const result = await pool.query(
     'SELECT stages_map, all_stages FROM cache_pipeline_stages ORDER BY cached_at DESC LIMIT 1'
   );
@@ -218,6 +296,11 @@ async function getPipelineStagesCache() {
 }
 
 async function setPipelineStagesCache(stagesMap, allStages) {
+  if (!USE_DATABASE) {
+    memoryStore.pipelineStages = { stagesMap, allStages };
+    return;
+  }
+
   await pool.query('DELETE FROM cache_pipeline_stages');
   await pool.query(
     'INSERT INTO cache_pipeline_stages (stages_map, all_stages, cached_at) VALUES ($1, $2, NOW())',
@@ -227,6 +310,17 @@ async function setPipelineStagesCache(stagesMap, allStages) {
 
 // Clear all caches
 async function clearAllCaches() {
+  if (!USE_DATABASE) {
+    memoryStore.deals = null;
+    memoryStore.companies.clear();
+    memoryStore.meetings.clear();
+    memoryStore.contacts.clear();
+    memoryStore.pipelineStages = null;
+    memoryStore.engagements.clear();
+    memoryStore.nextSteps.clear();
+    return;
+  }
+
   await pool.query('DELETE FROM cache_deals');
   await pool.query('DELETE FROM cache_companies');
   await pool.query('DELETE FROM cache_meetings');
@@ -236,6 +330,20 @@ async function clearAllCaches() {
 
 // Get cache statistics
 async function getCacheStats() {
+  if (!USE_DATABASE) {
+    return {
+      deals: {
+        cached: !!memoryStore.deals,
+        lastFetched: memoryStore.deals ? new Date(memoryStore.deals.lastFetched).toISOString() : null,
+        age: memoryStore.deals ? Date.now() - memoryStore.deals.lastFetched : null
+      },
+      companies: memoryStore.companies.size,
+      meetings: memoryStore.meetings.size,
+      contacts: memoryStore.contacts.size,
+      pipelineStages: !!memoryStore.pipelineStages
+    };
+  }
+
   const deals = await pool.query('SELECT COUNT(*) as count, MAX(last_fetched) as last_fetched FROM cache_deals');
   const companies = await pool.query('SELECT COUNT(*) as count FROM cache_companies');
   const meetings = await pool.query('SELECT COUNT(*) as count FROM cache_meetings');
@@ -257,6 +365,20 @@ async function getCacheStats() {
 
 // Engagement operations
 async function saveEngagement(companyId, engagement) {
+  if (!USE_DATABASE) {
+    if (!memoryStore.engagements.has(companyId)) {
+      memoryStore.engagements.set(companyId, []);
+    }
+    const engagements = memoryStore.engagements.get(companyId);
+    const existingIndex = engagements.findIndex(e => e.id === engagement.id);
+    if (existingIndex >= 0) {
+      engagements[existingIndex] = engagement;
+    } else {
+      engagements.push(engagement);
+    }
+    return;
+  }
+
   await pool.query(
     `INSERT INTO company_engagements (company_id, engagement_id, engagement_type, timestamp, direction, content, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -275,6 +397,11 @@ async function saveEngagement(companyId, engagement) {
 }
 
 async function getCompanyEngagements(companyId, limit = 10) {
+  if (!USE_DATABASE) {
+    const engagements = memoryStore.engagements.get(companyId) || [];
+    return engagements.slice(0, limit);
+  }
+
   const result = await pool.query(
     `SELECT * FROM company_engagements
      WHERE company_id = $1
@@ -286,6 +413,12 @@ async function getCompanyEngagements(companyId, limit = 10) {
 }
 
 async function getLastEngagementTimestamp(companyId) {
+  if (!USE_DATABASE) {
+    const engagements = memoryStore.engagements.get(companyId) || [];
+    if (engagements.length === 0) return null;
+    return Math.max(...engagements.map(e => e.timestamp));
+  }
+
   const result = await pool.query(
     `SELECT MAX(timestamp) as last_timestamp
      FROM company_engagements
@@ -297,6 +430,16 @@ async function getLastEngagementTimestamp(companyId) {
 
 // Next steps operations
 async function saveNextStep(dealId, companyId, nextStep, lastEngagementTimestamp) {
+  if (!USE_DATABASE) {
+    memoryStore.nextSteps.set(dealId, {
+      nextStep,
+      lastEngagementTimestamp,
+      generatedAt: new Date(),
+      updatedAt: new Date()
+    });
+    return;
+  }
+
   await pool.query(
     `INSERT INTO deal_next_steps (deal_id, company_id, next_step, last_engagement_timestamp, generated_at, updated_at)
      VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -307,6 +450,18 @@ async function saveNextStep(dealId, companyId, nextStep, lastEngagementTimestamp
 }
 
 async function getNextStep(dealId) {
+  if (!USE_DATABASE) {
+    const nextStep = memoryStore.nextSteps.get(dealId);
+    if (!nextStep) return null;
+    return {
+      deal_id: dealId,
+      next_step: nextStep.nextStep,
+      last_engagement_timestamp: nextStep.lastEngagementTimestamp,
+      generated_at: nextStep.generatedAt,
+      updated_at: nextStep.updatedAt
+    };
+  }
+
   const result = await pool.query(
     'SELECT * FROM deal_next_steps WHERE deal_id = $1',
     [dealId]
@@ -315,6 +470,19 @@ async function getNextStep(dealId) {
 }
 
 async function getAllNextSteps() {
+  if (!USE_DATABASE) {
+    const nextSteps = {};
+    memoryStore.nextSteps.forEach((value, dealId) => {
+      nextSteps[dealId] = {
+        nextStep: value.nextStep,
+        lastEngagementTimestamp: value.lastEngagementTimestamp,
+        generatedAt: value.generatedAt,
+        updatedAt: value.updatedAt
+      };
+    });
+    return nextSteps;
+  }
+
   const result = await pool.query('SELECT * FROM deal_next_steps');
   const nextSteps = {};
   result.rows.forEach(row => {
