@@ -33,13 +33,29 @@ async function fetchCompanyEngagements(companyId) {
 
       // Filter for emails and notes only
       if (engagement.type === 'EMAIL' || engagement.type === 'INCOMING_EMAIL' || engagement.type === 'NOTE') {
+        // Extract content based on type
+        let content = null;
+        if (engagement.type === 'NOTE') {
+          content = metadata.body || metadata.text;
+        } else if (engagement.type === 'EMAIL') {
+          // Outgoing emails have full HTML content
+          content = metadata.html || metadata.text;
+          // Strip HTML tags for cleaner AI analysis
+          if (content) {
+            content = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          }
+        } else if (engagement.type === 'INCOMING_EMAIL') {
+          // Incoming emails only have subject
+          content = `[Received email with subject: ${metadata.subject || 'No subject'}]`;
+        }
+
         const processed_engagement = {
           id: engagement.id.toString(),
           type: engagement.type,
           timestamp: engagement.timestamp || engagement.createdAt,
           direction: engagement.type === 'INCOMING_EMAIL' ? 'inbound' :
                      engagement.type === 'EMAIL' ? 'outbound' : null,
-          content: metadata.body || metadata.text || null,
+          content: content,
           metadata: {
             subject: metadata.subject,
             from: metadata.from,
