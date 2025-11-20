@@ -58,10 +58,34 @@ async function initializeDatabase() {
           cached_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
 
+        CREATE TABLE IF NOT EXISTS company_engagements (
+          id SERIAL PRIMARY KEY,
+          company_id VARCHAR(255) NOT NULL,
+          engagement_id VARCHAR(255) UNIQUE NOT NULL,
+          engagement_type VARCHAR(50) NOT NULL,
+          timestamp BIGINT NOT NULL,
+          direction VARCHAR(20),
+          content TEXT,
+          metadata JSONB,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS deal_next_steps (
+          deal_id VARCHAR(255) PRIMARY KEY,
+          company_id VARCHAR(255) NOT NULL,
+          next_step TEXT NOT NULL,
+          last_engagement_timestamp BIGINT,
+          generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
         CREATE INDEX IF NOT EXISTS idx_cache_companies_cached_at ON cache_companies(cached_at);
         CREATE INDEX IF NOT EXISTS idx_cache_meetings_cached_at ON cache_meetings(cached_at);
         CREATE INDEX IF NOT EXISTS idx_cache_contacts_cached_at ON cache_contacts(cached_at);
         CREATE INDEX IF NOT EXISTS idx_cache_deals_last_fetched ON cache_deals(last_fetched);
+        CREATE INDEX IF NOT EXISTS idx_company_engagements_company_id ON company_engagements(company_id);
+        CREATE INDEX IF NOT EXISTS idx_company_engagements_timestamp ON company_engagements(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_deal_next_steps_company_id ON deal_next_steps(company_id);
       `);
       console.log('Database schema initialized successfully');
     } finally {
@@ -231,6 +255,79 @@ async function getCacheStats() {
   };
 }
 
+// Engagement operations
+async function saveEngagement(companyId, engagement) {
+  await pool.query(
+    `INSERT INTO company_engagements (company_id, engagement_id, engagement_type, timestamp, direction, content, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (engagement_id) DO UPDATE
+     SET content = $6, metadata = $7`,
+    [
+      companyId,
+      engagement.id,
+      engagement.type,
+      engagement.timestamp,
+      engagement.direction || null,
+      engagement.content || null,
+      JSON.stringify(engagement.metadata || {})
+    ]
+  );
+}
+
+async function getCompanyEngagements(companyId, limit = 10) {
+  const result = await pool.query(
+    `SELECT * FROM company_engagements
+     WHERE company_id = $1
+     ORDER BY timestamp DESC
+     LIMIT $2`,
+    [companyId, limit]
+  );
+  return result.rows;
+}
+
+async function getLastEngagementTimestamp(companyId) {
+  const result = await pool.query(
+    `SELECT MAX(timestamp) as last_timestamp
+     FROM company_engagements
+     WHERE company_id = $1`,
+    [companyId]
+  );
+  return result.rows[0]?.last_timestamp || null;
+}
+
+// Next steps operations
+async function saveNextStep(dealId, companyId, nextStep, lastEngagementTimestamp) {
+  await pool.query(
+    `INSERT INTO deal_next_steps (deal_id, company_id, next_step, last_engagement_timestamp, generated_at, updated_at)
+     VALUES ($1, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (deal_id)
+     DO UPDATE SET next_step = $3, last_engagement_timestamp = $4, updated_at = NOW()`,
+    [dealId, companyId, nextStep, lastEngagementTimestamp]
+  );
+}
+
+async function getNextStep(dealId) {
+  const result = await pool.query(
+    'SELECT * FROM deal_next_steps WHERE deal_id = $1',
+    [dealId]
+  );
+  return result.rows[0] || null;
+}
+
+async function getAllNextSteps() {
+  const result = await pool.query('SELECT * FROM deal_next_steps');
+  const nextSteps = {};
+  result.rows.forEach(row => {
+    nextSteps[row.deal_id] = {
+      nextStep: row.next_step,
+      lastEngagementTimestamp: row.last_engagement_timestamp,
+      generatedAt: row.generated_at,
+      updatedAt: row.updated_at
+    };
+  });
+  return nextSteps;
+}
+
 module.exports = {
   pool,
   initializeDatabase,
@@ -246,5 +343,11 @@ module.exports = {
   getPipelineStagesCache,
   setPipelineStagesCache,
   clearAllCaches,
-  getCacheStats
+  getCacheStats,
+  saveEngagement,
+  getCompanyEngagements,
+  getLastEngagementTimestamp,
+  saveNextStep,
+  getNextStep,
+  getAllNextSteps
 };

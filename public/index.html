@@ -341,6 +341,65 @@
         .section-container:last-child .section-content {
             padding-bottom: 40px;
         }
+
+        .next-step-cell {
+            position: relative;
+            max-width: 300px;
+        }
+
+        .next-step-text {
+            display: block;
+            padding-right: 30px;
+        }
+
+        .refresh-next-step-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #1a3d4d;
+            color: #66ccff;
+            border: 1px solid #33ccdd;
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0;
+            transition: all 0.2s;
+        }
+
+        .refresh-next-step-btn:hover {
+            background-color: #224d5f;
+            transform: translateY(-50%) rotate(180deg);
+        }
+
+        .refresh-next-step-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .generate-all-btn {
+            background-color: #1a3d4d;
+            color: #66ccff;
+            border: 1px solid #33ccdd;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-left: 10px;
+        }
+
+        .generate-all-btn:hover {
+            background-color: #224d5f;
+        }
+
+        .generate-all-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -350,9 +409,14 @@
                 HubSpot Deals
                 <span class="deal-count" id="dealCount"></span>
             </h1>
-            <button class="refresh-btn" id="refreshBtn" onclick="loadDeals()">
-                Refresh
-            </button>
+            <div>
+                <button class="generate-all-btn" id="generateAllBtn" onclick="generateAllNextSteps()">
+                    Generate All Next Steps
+                </button>
+                <button class="refresh-btn" id="refreshBtn" onclick="loadDeals()">
+                    Refresh
+                </button>
+            </div>
         </div>
         <div class="table-container" id="tableContainer">
             <div class="loading">
@@ -365,6 +429,7 @@
     <script>
         let dealsData = [];
         let availableStages = [];
+        let nextStepsData = {};
         let currentSort = { column: null, direction: 'asc' };
         let currentDropdown = null;
         let sectionStates = {
@@ -381,6 +446,17 @@
                 }
             } catch (error) {
                 console.error('Error loading stages:', error);
+            }
+        }
+
+        async function loadNextSteps() {
+            try {
+                const response = await fetch('/api/next-steps');
+                if (response.ok) {
+                    nextStepsData = await response.json();
+                }
+            } catch (error) {
+                console.error('Error loading next steps:', error);
             }
         }
 
@@ -422,6 +498,9 @@
                     dealCount.textContent = '';
                     return;
                 }
+
+                // Load next steps
+                await loadNextSteps();
 
                 dealCount.textContent = `(${dealsData.length})`;
                 renderTable();
@@ -619,6 +698,7 @@
                                 onclick="sortData('daysInStage')">Days in Stage</th>
                             <th class="sortable ${currentSort.column === 'lastMeetingDate' ? 'sorted-' + currentSort.direction : ''}"
                                 onclick="sortData('lastMeetingDate')">Last Meeting</th>
+                            <th>Next Steps</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -653,6 +733,14 @@
                                             ? formatDateTime(deal.lastMeetingDate)
                                             : '<span class="no-meeting">No meetings</span>'
                                         }
+                                    </td>
+                                    <td class="next-step-cell">
+                                        <span class="next-step-text" id="next-step-${deal.id}">
+                                            ${nextStepsData[deal.id]?.nextStep || '<span class="no-meeting">Not generated</span>'}
+                                        </span>
+                                        <button class="refresh-next-step-btn" onclick="refreshNextStep('${deal.id}', ${globalIndex})" title="Refresh next step">
+                                            ↻
+                                        </button>
                                     </td>
                                 </tr>
                             `;
@@ -770,6 +858,98 @@
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
+        }
+
+        // Refresh next step for a single deal
+        async function refreshNextStep(dealId, dealIndex) {
+            const button = event.target;
+            const textSpan = document.getElementById(`next-step-${dealId}`);
+
+            button.disabled = true;
+            textSpan.innerHTML = '<span style="opacity: 0.6">Generating...</span>';
+
+            try {
+                const deal = dealsData[dealIndex];
+                const response = await fetch(`/api/next-steps/generate/${dealId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deal: {
+                            id: deal.id,
+                            dealName: deal.dealName,
+                            companyName: deal.companyName,
+                            companyId: deal.companyId
+                        },
+                        contactId: deal.primaryContactId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to generate next step');
+                }
+
+                const result = await response.json();
+                nextStepsData[dealId] = { nextStep: result.nextStep };
+                textSpan.textContent = result.nextStep;
+
+            } catch (error) {
+                console.error('Error generating next step:', error);
+                textSpan.innerHTML = '<span style="color: #f8a5a5">Error generating</span>';
+                alert('Failed to generate next step. Please try again.');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        // Generate next steps for all deals
+        async function generateAllNextSteps() {
+            const button = document.getElementById('generateAllBtn');
+            button.disabled = true;
+            button.textContent = 'Generating...';
+
+            try {
+                console.log('Starting bulk generation...');
+
+                const dealsForGeneration = dealsData.map(deal => ({
+                    id: deal.id,
+                    dealName: deal.dealName,
+                    companyName: deal.companyName,
+                    companyId: deal.companyId,
+                    primaryContactId: deal.primaryContactId
+                }));
+
+                const response = await fetch('/api/next-steps/generate-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deals: dealsForGeneration })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to generate next steps');
+                }
+
+                const result = await response.json();
+                console.log(`Generated ${result.results.filter(r => r.success).length}/${result.results.length} next steps`);
+
+                // Update next steps data
+                result.results.forEach(r => {
+                    if (r.success) {
+                        nextStepsData[r.dealId] = { nextStep: r.nextStep };
+                    }
+                });
+
+                // Refresh the table to show new next steps
+                renderTable();
+
+                alert(`Successfully generated next steps for ${result.results.filter(r => r.success).length} deals!`);
+
+            } catch (error) {
+                console.error('Error generating all next steps:', error);
+                alert('Failed to generate next steps. Please try again.');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Generate All Next Steps';
+            }
         }
 
         loadDeals();

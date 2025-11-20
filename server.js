@@ -3,6 +3,7 @@ const express = require('express');
 const axios = require('axios');
 const path = require('path');
 const db = require('./db');
+const nextSteps = require('./nextSteps');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -289,10 +290,12 @@ async function fetchAllDeals() {
       id: deal.id,
       dealName: deal.properties.dealname || 'Untitled Deal',
       companyName: companyName,
+      companyId: companyId,
       dealStage: stageId,
       dealStageLabel: stageInfo ? stageInfo.label : (stageId || 'N/A'),
       lastMeetingDate: lastMeetingDate,
       primaryContact: primaryContact,
+      primaryContactId: deal.associations?.contacts?.results[0]?.id || null,
       daysInStage: daysInStage
     };
   });
@@ -411,6 +414,71 @@ app.patch('/api/deals/:dealId/stage', async (req, res) => {
       error: 'Failed to update deal stage in HubSpot',
       details: error.response?.data || error.message
     });
+  }
+});
+
+// Get all next steps
+app.get('/api/next-steps', async (req, res) => {
+  try {
+    const allNextSteps = await db.getAllNextSteps();
+    res.json(allNextSteps);
+  } catch (error) {
+    console.error('Error fetching next steps:', error.message);
+    res.status(500).json({ error: 'Failed to fetch next steps' });
+  }
+});
+
+// Generate next step for a specific deal
+app.post('/api/next-steps/generate/:dealId', async (req, res) => {
+  try {
+    const { dealId } = req.params;
+    const { deal, contactId } = req.body;
+
+    if (!deal) {
+      return res.status(400).json({ error: 'deal object is required' });
+    }
+
+    console.log(`Generating next step for deal ${dealId}...`);
+    const nextStep = await nextSteps.generateNextStepForDeal(deal, contactId, true);
+
+    res.json({ success: true, nextStep });
+  } catch (error) {
+    console.error('Error generating next step:', error.message);
+    res.status(500).json({ error: 'Failed to generate next step', details: error.message });
+  }
+});
+
+// Generate next steps for all deals (bulk operation)
+app.post('/api/next-steps/generate-all', async (req, res) => {
+  try {
+    const { deals } = req.body;
+
+    if (!deals || !Array.isArray(deals)) {
+      return res.status(400).json({ error: 'deals array is required' });
+    }
+
+    console.log(`Starting bulk generation of next steps for ${deals.length} deals...`);
+
+    // Process deals one at a time to avoid rate limits
+    const results = [];
+    for (const deal of deals) {
+      try {
+        const nextStep = await nextSteps.generateNextStepForDeal(deal, deal.primaryContactId, false);
+        results.push({ dealId: deal.id, success: true, nextStep });
+      } catch (error) {
+        console.error(`Error generating next step for deal ${deal.id}:`, error.message);
+        results.push({ dealId: deal.id, success: false, error: error.message });
+      }
+
+      // Small delay to avoid overwhelming APIs
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    console.log(`Completed bulk generation. ${results.filter(r => r.success).length}/${deals.length} successful`);
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('Error in bulk generation:', error.message);
+    res.status(500).json({ error: 'Failed to generate next steps', details: error.message });
   }
 });
 
