@@ -725,7 +725,11 @@
         function formatDateTime(isoString) {
             const date = new Date(isoString);
             const now = new Date();
-            const diffMs = now - date;
+
+            // Compare calendar days, not time differences
+            const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const diffMs = nowOnly - dateOnly;
             const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
             const dateStr = date.toLocaleDateString('en-US', {
@@ -745,8 +749,12 @@
                 relativeStr = ' (Today)';
             } else if (diffDays === 1) {
                 relativeStr = ' (Yesterday)';
-            } else if (diffDays < 7) {
+            } else if (diffDays === -1) {
+                relativeStr = ' (Tomorrow)';
+            } else if (diffDays > 1 && diffDays < 7) {
                 relativeStr = ` (${diffDays} days ago)`;
+            } else if (diffDays < -1 && diffDays > -7) {
+                relativeStr = ` (in ${Math.abs(diffDays)} days)`;
             }
 
             return `${dateStr} at ${timeStr}${relativeStr}`;
