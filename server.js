@@ -37,18 +37,13 @@ async function getLastMeetingDate(companyId) {
     // First, get meeting IDs
     const response = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}/associations/meetings`);
 
-    if (!response.data.results || response.data.results.length === 0) {
-      await db.setMeetingCache(companyId, null);
-      return null;
-    }
-
-    const currentMeetingIds = response.data.results.map(m => m.id).sort();
+    const currentMeetingIds = (response.data.results || []).map(m => m.id).sort();
 
     // Check cache for this company's meetings
     const cached = await db.getMeetingCache(companyId, Infinity); // Don't expire based on time
 
     // If cached and meeting IDs haven't changed, return cached result
-    if (cached && cached.meetingIds) {
+    if (cached && cached.meetingIds !== undefined) {
       try {
         const cachedMeetingIds = JSON.parse(cached.meetingIds || '[]').sort();
         if (JSON.stringify(currentMeetingIds) === JSON.stringify(cachedMeetingIds)) {
@@ -59,6 +54,12 @@ async function getLastMeetingDate(companyId) {
         // Invalid JSON, treat as no cache
         console.log(`Invalid cached meeting IDs for company ${companyId}`);
       }
+    }
+
+    // No meetings - cache and return
+    if (currentMeetingIds.length === 0) {
+      await db.setMeetingCache(companyId, null, '[]');
+      return null;
     }
 
     // Meeting IDs changed or no cache - fetch meeting details

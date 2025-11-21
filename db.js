@@ -110,6 +110,19 @@ async function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_company_engagements_timestamp ON company_engagements(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_deal_next_steps_company_id ON deal_next_steps(company_id);
       `);
+
+      // Migration: Add meeting_ids column if it doesn't exist
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'cache_meetings' AND column_name = 'meeting_ids'
+          ) THEN
+            ALTER TABLE cache_meetings ADD COLUMN meeting_ids TEXT;
+          END IF;
+        END $$;
+      `);
       console.log('Database schema initialized successfully');
     } finally {
       client.release();
