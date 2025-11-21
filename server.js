@@ -858,17 +858,37 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
 
     console.log(`Fetching calendar events from ${sixMonthsAgo.toISOString()} to ${sixMonthsFromNow.toISOString()}...`);
 
-    const calendarEvents = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: sixMonthsAgo.toISOString(),
-      timeMax: sixMonthsFromNow.toISOString(),
-      maxResults: 500,
-      singleEvents: true,
-      orderBy: 'startTime'
-    });
+    // Fetch from all three calendars: max@, tal@, andy@
+    const calendarIds = [
+      'max@runlayer.com',
+      'tal@runlayer.com',
+      'andy@runlayer.com'
+    ];
 
-    const events = calendarEvents.data.items || [];
-    console.log(`Found ${events.length} total calendar events`);
+    let allEvents = [];
+    for (const calendarId of calendarIds) {
+      try {
+        console.log(`Fetching events from ${calendarId}...`);
+        const calendarEvents = await calendar.events.list({
+          calendarId: calendarId,
+          timeMin: sixMonthsAgo.toISOString(),
+          timeMax: sixMonthsFromNow.toISOString(),
+          maxResults: 500,
+          singleEvents: true,
+          orderBy: 'startTime'
+        });
+
+        const events = calendarEvents.data.items || [];
+        console.log(`Found ${events.length} events from ${calendarId}`);
+        allEvents = allEvents.concat(events);
+      } catch (error) {
+        console.error(`Error fetching calendar ${calendarId}:`, error.message);
+        // Continue with other calendars even if one fails
+      }
+    }
+
+    const events = allEvents;
+    console.log(`Found ${events.length} total calendar events across all calendars`);
 
     // Filter events that match company domain or contact emails
     const matchedEvents = events.filter(event => {
