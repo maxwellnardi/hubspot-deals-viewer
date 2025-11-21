@@ -102,6 +102,16 @@ async function initializeDatabase() {
           updated_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
 
+        CREATE TABLE IF NOT EXISTS calendar_sync_log (
+          company_id VARCHAR(255) PRIMARY KEY,
+          last_sync_time TIMESTAMP NOT NULL DEFAULT NOW(),
+          synced_count INT NOT NULL DEFAULT 0,
+          created_contacts_count INT NOT NULL DEFAULT 0,
+          skipped_count INT NOT NULL DEFAULT 0,
+          gcal_event_ids TEXT,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
         CREATE INDEX IF NOT EXISTS idx_cache_companies_cached_at ON cache_companies(cached_at);
         CREATE INDEX IF NOT EXISTS idx_cache_meetings_cached_at ON cache_meetings(cached_at);
         CREATE INDEX IF NOT EXISTS idx_cache_contacts_cached_at ON cache_contacts(cached_at);
@@ -513,6 +523,34 @@ async function getAllNextSteps() {
   return nextSteps;
 }
 
+// Calendar sync log operations
+async function getCalendarSyncLog(companyId) {
+  if (!USE_DATABASE) {
+    // In-memory storage for local dev
+    return null;
+  }
+
+  const result = await pool.query(
+    'SELECT * FROM calendar_sync_log WHERE company_id = $1',
+    [companyId]
+  );
+  return result.rows[0] || null;
+}
+
+async function saveCalendarSyncLog(companyId, syncedCount, createdContactsCount, skippedCount, gcalEventIds) {
+  if (!USE_DATABASE) {
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO calendar_sync_log (company_id, last_sync_time, synced_count, created_contacts_count, skipped_count, gcal_event_ids, updated_at)
+     VALUES ($1, NOW(), $2, $3, $4, $5, NOW())
+     ON CONFLICT (company_id)
+     DO UPDATE SET last_sync_time = NOW(), synced_count = $2, created_contacts_count = $3, skipped_count = $4, gcal_event_ids = $5, updated_at = NOW()`,
+    [companyId, syncedCount, createdContactsCount, skippedCount, JSON.stringify(gcalEventIds)]
+  );
+}
+
 module.exports = {
   pool,
   initializeDatabase,
@@ -534,5 +572,7 @@ module.exports = {
   getLastEngagementTimestamp,
   saveNextStep,
   getNextStep,
-  getAllNextSteps
+  getAllNextSteps,
+  getCalendarSyncLog,
+  saveCalendarSyncLog
 };

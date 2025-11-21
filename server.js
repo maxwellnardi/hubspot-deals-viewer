@@ -784,6 +784,240 @@ app.post('/api/deals/refresh/:dealId', async (req, res) => {
   }
 });
 
+// Google Calendar to HubSpot sync endpoint
+app.post('/api/sync-calendar/:companyId', async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    console.log(`Starting calendar sync for company ${companyId}...`);
+
+    // Check if Google credentials are configured
+    const { google } = require('googleapis');
+    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+    const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
+
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
+      return res.json({
+        success: false,
+        message: 'Google Calendar API credentials not configured. Please add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN to your environment variables.',
+        note: 'Run: node get-google-token.js to get your refresh token'
+      });
+    }
+
+    // Initialize Google Calendar API
+    const oauth2Client = new google.auth.OAuth2(
+      GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET,
+      'http://localhost:3001/oauth2callback'
+    );
+    oauth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    // Fetch company details including domain
+    const companyResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}`, {
+      params: { properties: 'name,domain' }
+    });
+    const company = companyResponse.data.properties;
+    const companyDomain = company.domain;
+
+    if (!companyDomain) {
+      return res.status(400).json({
+        error: 'Company has no domain set. Cannot match calendar events.',
+        success: false
+      });
+    }
+
+    console.log(`Company: ${company.name}, Domain: ${companyDomain}`);
+
+    // Fetch all contacts for this company
+    const contactsResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}/associations/contacts`);
+    const contactIds = (contactsResponse.data.results || []).map(c => c.id);
+
+    // Fetch contact details with emails
+    const contactsData = await processBatch(contactIds.slice(0, 50), async (contactId) => {
+      try {
+        const contactResponse = await hubspotApi.get(`/crm/v3/objects/contacts/${contactId}`, {
+          params: { properties: 'email,firstname,lastname' }
+        });
+        return { id: contactId, ...contactResponse.data.properties };
+      } catch (error) {
+        console.error(`Error fetching contact ${contactId}:`, error.message);
+        return null;
+      }
+    }, 5, 500);
+
+    const validContacts = contactsData.filter(c => c && c.email);
+    const contactEmails = new Set(validContacts.map(c => c.email.toLowerCase()));
+    console.log(`Found ${validContacts.length} contacts with emails for ${company.name}`);
+
+    // Fetch calendar events (last 6 months + next 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const sixMonthsFromNow = new Date();
+    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
+
+    console.log(`Fetching calendar events from ${sixMonthsAgo.toISOString()} to ${sixMonthsFromNow.toISOString()}...`);
+
+    const calendarEvents = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: sixMonthsAgo.toISOString(),
+      timeMax: sixMonthsFromNow.toISOString(),
+      maxResults: 500,
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+
+    const events = calendarEvents.data.items || [];
+    console.log(`Found ${events.length} total calendar events`);
+
+    // Filter events that match company domain or contact emails
+    const matchedEvents = events.filter(event => {
+      if (!event.attendees) return false;
+
+      return event.attendees.some(attendee => {
+        const email = attendee.email.toLowerCase();
+        // Match by domain or exact contact email
+        return email.endsWith(`@${companyDomain}`) || contactEmails.has(email);
+      });
+    });
+
+    console.log(`Found ${matchedEvents.length} events matching ${companyDomain}`);
+
+    // Fetch existing meetings to avoid duplicates
+    const existingMeetingsResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}/associations/meetings`);
+    const existingMeetingIds = (existingMeetingsResponse.data.results || []).map(m => m.id);
+
+    const existingMeetings = await processBatch(existingMeetingIds.slice(0, 100), async (meetingId) => {
+      try {
+        const meetingResponse = await hubspotApi.get(`/crm/v3/objects/meetings/${meetingId}`, {
+          params: { properties: 'hs_meeting_title,hs_meeting_start_time' }
+        });
+        return meetingResponse.data.properties;
+      } catch (error) {
+        return null;
+      }
+    }, 5, 500);
+
+    const existingMeetingKeys = new Set(
+      existingMeetings
+        .filter(m => m && m.hs_meeting_start_time && m.hs_meeting_title)
+        .map(m => `${m.hs_meeting_start_time}_${m.hs_meeting_title}`)
+    );
+
+    // Sync events to HubSpot
+    let syncedCount = 0;
+    let skippedCount = 0;
+    let createdContactsCount = 0;
+
+    for (const event of matchedEvents) {
+      const startTime = event.start.dateTime || event.start.date;
+      const title = event.summary || 'No Title';
+      const meetingKey = `${startTime}_${title}`;
+
+      // Skip duplicates
+      if (existingMeetingKeys.has(meetingKey)) {
+        console.log(`Skipping duplicate: ${title} at ${startTime}`);
+        skippedCount++;
+        continue;
+      }
+
+      // Create meeting in HubSpot
+      try {
+        const meetingResponse = await hubspotApi.post('/crm/v3/objects/meetings', {
+          properties: {
+            hs_meeting_title: title,
+            hs_meeting_start_time: new Date(startTime).getTime(),
+            hs_meeting_end_time: event.end ? new Date(event.end.dateTime || event.end.date).getTime() : null,
+            hs_meeting_body: event.description || '',
+            hs_meeting_location: event.location || ''
+          }
+        });
+
+        const meetingId = meetingResponse.data.id;
+        console.log(`Created meeting: ${title} (ID: ${meetingId})`);
+
+        // Associate meeting with company
+        await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`);
+
+        // Associate meeting with contacts (and create missing ones)
+        if (event.attendees) {
+          for (const attendee of event.attendees) {
+            const email = attendee.email.toLowerCase();
+
+            // Find or create contact
+            let contactId = validContacts.find(c => c.email.toLowerCase() === email)?.id;
+
+            if (!contactId && (email.endsWith(`@${companyDomain}`) || contactEmails.has(email))) {
+              // Create new contact
+              try {
+                const newContactResponse = await hubspotApi.post('/crm/v3/objects/contacts', {
+                  properties: {
+                    email: attendee.email,
+                    firstname: attendee.displayName || attendee.email.split('@')[0]
+                  }
+                });
+                contactId = newContactResponse.data.id;
+                createdContactsCount++;
+                console.log(`Created new contact: ${attendee.email} (ID: ${contactId})`);
+
+                // Associate contact with company
+                await hubspotApi.put(`/crm/v3/objects/contacts/${contactId}/associations/companies/${companyId}/1`);
+              } catch (error) {
+                console.error(`Error creating contact ${attendee.email}:`, error.message);
+              }
+            }
+
+            // Associate meeting with contact
+            if (contactId) {
+              try {
+                await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/contacts/${contactId}/200`);
+              } catch (error) {
+                console.error(`Error associating meeting with contact ${contactId}:`, error.message);
+              }
+            }
+          }
+        }
+
+        syncedCount++;
+
+        // Rate limiting: small delay between meeting creations
+        await delay(1000);
+
+      } catch (error) {
+        console.error(`Error creating meeting "${title}":`, error.response?.data || error.message);
+        skippedCount++;
+      }
+    }
+
+    // Save sync log
+    await db.saveCalendarSyncLog(
+      companyId,
+      syncedCount,
+      createdContactsCount,
+      skippedCount,
+      matchedEvents.map(e => e.id)
+    );
+
+    res.json({
+      success: true,
+      companyId,
+      companyName: company.name,
+      companyDomain,
+      synced: syncedCount,
+      skipped: skippedCount,
+      created_contacts: createdContactsCount,
+      total_matched_events: matchedEvents.length
+    });
+
+  } catch (error) {
+    console.error('Error syncing calendar:', error.message, error.response?.data);
+    res.status(500).json({
+      error: 'Failed to sync calendar',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
 // Initialize database and start server
 async function startServer() {
   try {

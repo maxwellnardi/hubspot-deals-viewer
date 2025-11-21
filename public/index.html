@@ -649,9 +649,128 @@
             cursor: not-allowed;
             transform: none;
         }
+
+        /* Calendar sync button */
+        .sync-calendar-btn {
+            background: hsl(217.2 32.6% 17.5%);
+            color: hsl(var(--foreground));
+            border: 1px solid hsl(var(--border));
+            border-radius: 6px;
+            width: 26px;
+            height: 26px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-left: 8px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+        }
+
+        .sync-calendar-btn:hover {
+            background: hsl(217.2 32.6% 20%);
+            border-color: hsl(215 20.2% 65.1%);
+            transform: scale(1.1);
+        }
+
+        .sync-calendar-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Calendar sync modal */
+        .calendar-sync-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .calendar-sync-modal.show {
+            display: flex;
+        }
+
+        .calendar-sync-modal-content {
+            background: hsl(222.2 47.4% 11.2%);
+            border: 1px solid hsl(var(--border));
+            border-radius: 12px;
+            padding: 32px;
+            min-width: 400px;
+            max-width: 500px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .calendar-sync-modal h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: hsl(var(--foreground));
+        }
+
+        .calendar-sync-modal .status {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .calendar-sync-modal .spinner-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .calendar-sync-modal .close-btn {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 16px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .calendar-sync-modal .close-btn:hover {
+            background: hsl(210 40% 92%);
+        }
+
+        .calendar-sync-modal .close-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
+    <!-- Calendar Sync Modal -->
+    <div class="calendar-sync-modal" id="calendarSyncModal">
+        <div class="calendar-sync-modal-content">
+            <h3 id="syncModalTitle">Syncing Calendar...</h3>
+            <div class="status" id="syncModalStatus">
+                Initializing calendar sync...
+            </div>
+            <div class="spinner-container" id="syncModalSpinner">
+                <div class="spinner"></div>
+            </div>
+            <button class="close-btn" id="syncModalCloseBtn" onclick="closeCalendarSyncModal()" disabled>
+                Close
+            </button>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <h1>
@@ -1218,6 +1337,11 @@
                                             ? formatDateTime(deal.lastMeetingDate)
                                             : '<span class="no-meeting">No meetings</span>'
                                         }
+                                        ${deal.companyId ? `
+                                            <button class="sync-calendar-btn" onclick="syncCalendar('${deal.companyId}', '${escapeHtml(deal.companyName)}')" title="Sync Google Calendar events">
+                                                📅
+                                            </button>
+                                        ` : ''}
                                     </td>
                                     <td class="next-step-cell">
                                         <span class="next-step-text" id="next-step-${deal.id}">
@@ -1492,6 +1616,67 @@
                 button.disabled = false;
                 button.textContent = 'Generate All Next Steps';
             }
+        }
+
+        // Sync Google Calendar to HubSpot
+        async function syncCalendar(companyId, companyName) {
+            const modal = document.getElementById('calendarSyncModal');
+            const title = document.getElementById('syncModalTitle');
+            const status = document.getElementById('syncModalStatus');
+            const spinner = document.getElementById('syncModalSpinner');
+            const closeBtn = document.getElementById('syncModalCloseBtn');
+
+            // Show modal
+            modal.classList.add('show');
+            title.textContent = `Syncing Calendar for ${companyName}`;
+            status.textContent = 'Fetching company contacts and calendar events...';
+            spinner.style.display = 'flex';
+            closeBtn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/sync-calendar/${companyId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                spinner.style.display = 'none';
+                closeBtn.disabled = false;
+
+                if (result.success) {
+                    title.textContent = 'Calendar Sync Complete!';
+                    status.innerHTML = `
+                        <strong>Company:</strong> ${escapeHtml(result.companyName)}<br>
+                        <strong>Events synced:</strong> ${result.synced}<br>
+                        <strong>Events skipped:</strong> ${result.skipped}<br>
+                        <strong>Contacts created:</strong> ${result.created_contacts || 0}
+                    `;
+                } else {
+                    title.textContent = 'Calendar Sync Info';
+                    status.innerHTML = `
+                        <strong>${escapeHtml(result.message || result.error)}</strong><br><br>
+                        ${result.note ? `<em>${escapeHtml(result.note)}</em><br><br>` : ''}
+                        ${result.companyDomain ? `<strong>Company Domain:</strong> ${escapeHtml(result.companyDomain)}<br>` : ''}
+                        ${result.contactsFound !== undefined ? `<strong>Contacts Found:</strong> ${result.contactsFound}` : ''}
+                    `;
+                }
+
+            } catch (error) {
+                console.error('Error syncing calendar:', error);
+                spinner.style.display = 'none';
+                closeBtn.disabled = false;
+                title.textContent = 'Sync Failed';
+                status.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        function closeCalendarSyncModal() {
+            const modal = document.getElementById('calendarSyncModal');
+            modal.classList.remove('show');
+
+            // Optionally reload deals to show newly synced meetings
+            // loadDeals();
         }
 
         // Initialize on page load
