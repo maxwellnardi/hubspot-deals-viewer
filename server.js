@@ -980,13 +980,18 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
         const meetingId = meetingResponse.data.id;
         console.log(`Created meeting: ${title} (ID: ${meetingId})`);
 
-        // Associate meeting with company (type 202 = meeting_to_company)
+        // Associate meeting with company using batch API
         try {
-          await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`);
+          await hubspotApi.post('/crm/v3/associations/meeting/company/batch/create', {
+            inputs: [{
+              from: { id: meetingId },
+              to: { id: companyId },
+              type: "meeting_to_company"
+            }]
+          });
           console.log(`Associated meeting ${meetingId} with company ${companyId}`);
         } catch (error) {
           console.error(`Error associating meeting with company:`, JSON.stringify({
-            url: `/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`,
             status: error.response?.status,
             statusText: error.response?.statusText,
             data: error.response?.data,
@@ -1016,17 +1021,29 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
                 createdContactsCount++;
                 console.log(`Created new contact: ${attendee.email} (ID: ${contactId})`);
 
-                // Associate contact with company (type 1 = contact_to_company)
-                await hubspotApi.put(`/crm/v3/objects/contacts/${contactId}/associations/companies/${companyId}/1`);
+                // Associate contact with company using batch API
+                await hubspotApi.post('/crm/v3/associations/contact/company/batch/create', {
+                  inputs: [{
+                    from: { id: contactId },
+                    to: { id: companyId },
+                    type: "contact_to_company"
+                  }]
+                });
               } catch (error) {
                 console.error(`Error creating contact ${attendee.email}:`, error.message);
               }
             }
 
-            // Associate meeting with contact (type 200 = meeting_to_contact)
+            // Associate meeting with contact using batch API
             if (contactId) {
               try {
-                await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/contacts/${contactId}/200`);
+                await hubspotApi.post('/crm/v3/associations/meeting/contact/batch/create', {
+                  inputs: [{
+                    from: { id: meetingId },
+                    to: { id: contactId },
+                    type: "meeting_to_contact"
+                  }]
+                });
               } catch (error) {
                 console.error(`Error associating meeting with contact ${contactId}:`, error.message);
               }
