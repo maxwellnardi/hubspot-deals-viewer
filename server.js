@@ -890,15 +890,37 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     const events = allEvents;
     console.log(`Found ${events.length} total calendar events across all calendars`);
 
+    // Debug: Check for events around November 11
+    const nov11Events = events.filter(e => {
+      const startTime = e.start?.dateTime || e.start?.date;
+      if (!startTime) return false;
+      const date = new Date(startTime);
+      return date.getMonth() === 10 && date.getDate() === 11; // November is month 10
+    });
+    console.log(`DEBUG: Found ${nov11Events.length} events on November 11th`);
+    if (nov11Events.length > 0) {
+      nov11Events.slice(0, 3).forEach(e => {
+        console.log(`  - ${e.summary} with attendees:`, e.attendees?.map(a => a.email).join(', ') || 'none');
+      });
+    }
+
     // Filter events that match company domain or contact emails
     const matchedEvents = events.filter(event => {
       if (!event.attendees) return false;
 
-      return event.attendees.some(attendee => {
+      const hasMatch = event.attendees.some(attendee => {
         const email = attendee.email.toLowerCase();
         // Match by domain or exact contact email
         return email.endsWith(`@${companyDomain}`) || contactEmails.has(email);
       });
+
+      // Debug log for events with relevant attendees
+      if (event.attendees.some(a => a.email.toLowerCase().includes('lemonade'))) {
+        console.log(`DEBUG: Event "${event.summary}" has Lemonade attendee:`, event.attendees.map(a => a.email).join(', '));
+        console.log(`  Checking against domain: ${companyDomain}, Match: ${hasMatch}`);
+      }
+
+      return hasMatch;
     });
 
     console.log(`Found ${matchedEvents.length} events matching ${companyDomain}`);
@@ -943,10 +965,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
 
       // Create meeting in HubSpot
       try {
+        const startTimeMs = new Date(startTime).getTime();
         const meetingResponse = await hubspotApi.post('/crm/v3/objects/meetings', {
           properties: {
             hs_meeting_title: title,
-            hs_meeting_start_time: new Date(startTime).getTime(),
+            hs_timestamp: startTimeMs, // Required timestamp field
+            hs_meeting_start_time: startTimeMs,
             hs_meeting_end_time: event.end ? new Date(event.end.dateTime || event.end.date).getTime() : null,
             hs_meeting_body: event.description || '',
             hs_meeting_location: event.location || ''
