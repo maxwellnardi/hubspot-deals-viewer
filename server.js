@@ -981,7 +981,19 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
         console.log(`Created meeting: ${title} (ID: ${meetingId})`);
 
         // Associate meeting with company (type 202 = meeting_to_company)
-        await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`);
+        try {
+          await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`);
+          console.log(`Associated meeting ${meetingId} with company ${companyId}`);
+        } catch (error) {
+          console.error(`Error associating meeting with company:`, JSON.stringify({
+            url: `/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`,
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            data: error.response?.data,
+            message: error.message
+          }, null, 2));
+          throw error; // Re-throw to skip this meeting
+        }
 
         // Associate meeting with contacts (and create missing ones)
         if (event.attendees) {
