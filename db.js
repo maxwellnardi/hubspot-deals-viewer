@@ -264,6 +264,15 @@ async function setMeetingCache(companyId, lastMeetingDate, meetingIds = null) {
   );
 }
 
+async function clearMeetingCache(companyId) {
+  if (!USE_DATABASE) {
+    memoryStore.meetings.delete(companyId);
+    return;
+  }
+
+  await pool.query('DELETE FROM cache_meetings WHERE company_id = $1', [companyId]);
+}
+
 // Contact cache operations
 async function getContactCache(contactId, maxAgeMs) {
   if (!USE_DATABASE) {
@@ -561,6 +570,7 @@ module.exports = {
   setCompanyCache,
   getMeetingCache,
   setMeetingCache,
+  clearMeetingCache,
   getContactCache,
   setContactCache,
   getPipelineStagesCache,

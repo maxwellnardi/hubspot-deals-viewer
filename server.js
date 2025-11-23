@@ -981,7 +981,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
         console.log(`Created meeting: ${title} (ID: ${meetingId})`);
 
         // Associate meeting with company
-        await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}/202`);
+        await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/companies/${companyId}`, [
+          {
+            associationCategory: "HUBSPOT_DEFINED",
+            associationTypeId: 202
+          }
+        ]);
 
         // Associate meeting with contacts (and create missing ones)
         if (event.attendees) {
@@ -1005,7 +1010,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
                 console.log(`Created new contact: ${attendee.email} (ID: ${contactId})`);
 
                 // Associate contact with company
-                await hubspotApi.put(`/crm/v3/objects/contacts/${contactId}/associations/companies/${companyId}/1`);
+                await hubspotApi.put(`/crm/v3/objects/contacts/${contactId}/associations/companies/${companyId}`, [
+                  {
+                    associationCategory: "HUBSPOT_DEFINED",
+                    associationTypeId: 1
+                  }
+                ]);
               } catch (error) {
                 console.error(`Error creating contact ${attendee.email}:`, error.message);
               }
@@ -1014,7 +1024,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
             // Associate meeting with contact
             if (contactId) {
               try {
-                await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/contacts/${contactId}/200`);
+                await hubspotApi.put(`/crm/v3/objects/meetings/${meetingId}/associations/contacts/${contactId}`, [
+                  {
+                    associationCategory: "HUBSPOT_DEFINED",
+                    associationTypeId: 200
+                  }
+                ]);
               } catch (error) {
                 console.error(`Error associating meeting with contact ${contactId}:`, error.message);
               }
@@ -1028,10 +1043,14 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
         await delay(1000);
 
       } catch (error) {
-        console.error(`Error creating meeting "${title}":`, error.response?.data || error.message);
+        const errorDetail = error.response?.data || error.message;
+        console.error(`Error creating meeting "${title}":`, JSON.stringify(errorDetail, null, 2));
         skippedCount++;
       }
     }
+
+    // Clear meeting cache so the Last Meeting column updates
+    await db.clearMeetingCache(companyId);
 
     // Save sync log
     await db.saveCalendarSyncLog(
