@@ -786,7 +786,8 @@ app.post('/api/deals/refresh/:dealId', async (req, res) => {
     let nextStep = null;
     if (companyId || primaryContactId) {
       const nextSteps = require('./nextSteps');
-      nextStep = await nextSteps.generateNextStepForDeal(updatedDeal, primaryContactId, true);
+      const result = await nextSteps.generateNextStepForDeal(updatedDeal, primaryContactId, true);
+      nextStep = result.nextStep;
     }
 
     res.json({
