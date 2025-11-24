@@ -310,16 +310,19 @@ CRITICAL INSTRUCTIONS:
 12. ⚠️ NEVER suggest actions for dates that have ALREADY PASSED relative to today's date
 13. ⚠️ If a follow-up meeting is already scheduled (see UPCOMING MEETINGS), DO NOT suggest "schedule follow-up meeting"
 14. If suggested action references a past date or already-scheduled meeting, say "Unsure" instead
+15. ⚠️ NEVER mention "Runlayer" or "Anysource" - the tool users work at these companies, so phrases like "with Runlayer" or "Runlayer integration" are redundant and confusing
 
 BAD (hallucination): Making up details not in the activity data
 BAD (useless): "Review 1/17 note for next steps"
 BAD (verbose): "Schedule follow-up meeting with HPE team to discuss next steps"
-BAD (redundant): "Follow up with Acme about pricing"
+BAD (redundant company): "Follow up with Acme about pricing"
+BAD (redundant seller): "Discuss next steps for Rippling integration with Runlayer"
 BAD (past date): "Schedule meeting on Nov 11" (when today is Nov 24)
 BAD (already scheduled): "Schedule follow-up meeting" (when one is already on calendar)
 GOOD: "Send updated contract terms (per Oct 15 note)"
 GOOD: "Schedule tech demo before Jan 31 deadline (mentioned in last email)"
 GOOD: "Get legal approval on data privacy terms (blocking signature per note)"
+GOOD: "Discuss next steps for Rippling integration" (removes redundant "with Runlayer")
 GOOD: "Unsure" (if data lacks actionable content, references past dates, or actions are completed)
 
 OUTPUT: 80 chars max, terse, actionable, specific. NO company name. NO made-up information.`;
