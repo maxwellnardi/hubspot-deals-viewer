@@ -1275,7 +1275,11 @@
                         ${deals.map((deal, localIndex) => {
                             const globalIndex = dealsData.indexOf(deal);
                             const nextStep = nextStepsData[deal.id]?.nextStep || '';
+                            const daysSinceLastOutbound = nextStepsData[deal.id]?.daysSinceLastOutbound;
                             const isInactive = nextStep.toLowerCase().includes('no recent activity');
+
+                            // Don't suggest moving to cold if we recently emailed them (within 14 days)
+                            const hasRecentOutbound = daysSinceLastOutbound !== null && daysSinceLastOutbound !== undefined && daysSinceLastOutbound < 14;
 
                             // Find reengage/cold stage
                             const reengageStage = availableStages.find(s =>
@@ -1293,7 +1297,7 @@
                             // Check if user has rejected this suggestion
                             const hasRejectedSuggestion = deal.rejectedSuggestions && deal.rejectedSuggestions.includes('reengage');
 
-                            const shouldSuggestStage = isInactive && reengageStage && deal.dealStage !== reengageStage.id && !hasRejectedSuggestion && !isExcludedStage;
+                            const shouldSuggestStage = isInactive && !hasRecentOutbound && reengageStage && deal.dealStage !== reengageStage.id && !hasRejectedSuggestion && !isExcludedStage;
 
                             return `
                                 <tr class="${isInactive ? 'inactive-deal' : ''}" id="deal-row-${globalIndex}">
@@ -1567,7 +1571,10 @@
                 }
 
                 const result = await response.json();
-                nextStepsData[dealId] = { nextStep: result.nextStep };
+                nextStepsData[dealId] = {
+                    nextStep: result.nextStep,
+                    daysSinceLastOutbound: result.daysSinceLastOutbound
+                };
                 textSpan.textContent = result.nextStep;
 
             } catch (error) {

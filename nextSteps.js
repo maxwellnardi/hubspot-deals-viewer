@@ -450,11 +450,22 @@ async function generateNextStepForDeal(deal, contactId = null, forceRefresh = fa
   // Generate next step with AI
   const nextStep = await generateNextStep(engagements, deal.dealName, deal.companyName || 'Unknown Company', upcomingMeetings);
 
+  // Calculate days since last outbound email
+  let daysSinceLastOutbound = null;
+  const outboundEngagements = engagements.filter(e => e.direction === 'outbound');
+  if (outboundEngagements.length > 0) {
+    const lastOutboundTimestamp = outboundEngagements[0].timestamp;
+    daysSinceLastOutbound = Math.floor((Date.now() - lastOutboundTimestamp) / (1000 * 60 * 60 * 24));
+  }
+
   // Save next step to database
   const lastEngagementTimestamp = engagements.length > 0 ? engagements[0].timestamp : null;
   await db.saveNextStep(dealId, storageId, nextStep, lastEngagementTimestamp);
 
-  return nextStep;
+  return {
+    nextStep,
+    daysSinceLastOutbound
+  };
 }
 
 module.exports = {

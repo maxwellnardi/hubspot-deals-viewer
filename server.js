@@ -600,9 +600,9 @@ app.post('/api/next-steps/generate/:dealId', async (req, res) => {
     }
 
     console.log(`Generating next step for deal ${dealId}...`);
-    const nextStep = await nextSteps.generateNextStepForDeal(deal, contactId, true);
+    const result = await nextSteps.generateNextStepForDeal(deal, contactId, true);
 
-    res.json({ success: true, nextStep });
+    res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error generating next step:', error.message);
     res.status(500).json({ error: 'Failed to generate next step', details: error.message });
@@ -624,8 +624,8 @@ app.post('/api/next-steps/generate-all', async (req, res) => {
     const results = [];
     for (const deal of deals) {
       try {
-        const nextStep = await nextSteps.generateNextStepForDeal(deal, deal.primaryContactId, false);
-        results.push({ dealId: deal.id, success: true, nextStep });
+        const result = await nextSteps.generateNextStepForDeal(deal, deal.primaryContactId, false);
+        results.push({ dealId: deal.id, success: true, nextStep: result.nextStep });
       } catch (error) {
         console.error(`Error generating next step for deal ${deal.id}:`, error.message);
         results.push({ dealId: deal.id, success: false, error: error.message });
