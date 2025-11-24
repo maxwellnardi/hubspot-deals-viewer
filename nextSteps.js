@@ -330,10 +330,11 @@ CRITICAL INSTRUCTIONS:
 9. Include specifics only if they're in the data: who, what, when, how much
 10. NEVER mention company name - it's already shown in the same row
 11. Be maximally concise - cut unnecessary words like "team", "to discuss next steps"
-12. ⚠️ NEVER suggest actions for dates that have ALREADY PASSED relative to today's date
+12. ⚠️ NEVER suggest actions for dates that have ALREADY PASSED relative to today's date - this includes relative dates like "Monday", "next week", "tomorrow" in emails that are weeks old
 13. ⚠️ If a follow-up meeting is already scheduled (see UPCOMING MEETINGS), DO NOT suggest "schedule follow-up meeting"
 14. If suggested action references a past date or already-scheduled meeting, say "Unsure" instead
 15. ⚠️ NEVER mention "Runlayer" or "Anysource" - the tool users work at these companies, so phrases like "with Runlayer" or "Runlayer integration" are redundant and confusing
+16. ⚠️ Relative date references (Monday, next week, tomorrow, etc.) in OLD emails (>14 days) are OUTDATED. If an email mentions scheduling but is >14 days old, IGNORE those suggestions - those dates have passed. Return "Follow up to reschedule" or "Unsure" instead.
 
 BAD (hallucination): Making up details not in the activity data
 BAD (useless): "Review 1/17 note for next steps"
@@ -341,11 +342,13 @@ BAD (verbose): "Schedule follow-up meeting with HPE team to discuss next steps"
 BAD (redundant company): "Follow up with Acme about pricing"
 BAD (redundant seller): "Discuss next steps for Rippling integration with Runlayer"
 BAD (past date): "Schedule meeting on Nov 11" (when today is Nov 24)
+BAD (outdated reference): "Schedule meeting on Monday" (from email 45 days ago - that Monday has passed)
 BAD (already scheduled): "Schedule follow-up meeting" (when one is already on calendar)
 GOOD: "Send updated contract terms (per Oct 15 note)"
 GOOD: "Schedule tech demo before Jan 31 deadline (mentioned in last email)"
 GOOD: "Get legal approval on data privacy terms (blocking signature per note)"
 GOOD: "Discuss next steps for Rippling integration" (removes redundant "with Runlayer")
+GOOD: "Follow up to reschedule" (when old email mentioned scheduling but that time has passed)
 GOOD: "Unsure" (if data lacks actionable content, references past dates, or actions are completed)
 
 OUTPUT: 80 chars max, terse, actionable, specific. NO company name. NO made-up information.`;
