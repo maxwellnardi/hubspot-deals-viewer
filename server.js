@@ -923,6 +923,42 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     const events = Array.from(eventMap.values());
     console.log(`Found ${allEvents.length} total calendar events across all calendars (${events.length} unique events after deduplication)`);
 
+    // Statistics about attendees
+    const eventsWithAttendees = events.filter(e => e.attendees && e.attendees.length > 0);
+    const eventsWithoutAttendees = events.filter(e => !e.attendees || e.attendees.length === 0);
+    console.log(`Events with attendees: ${eventsWithAttendees.length}`);
+    console.log(`Events without attendees: ${eventsWithoutAttendees.length}`);
+
+    if (eventsWithoutAttendees.length > 0) {
+      console.log('\nEvents without attendees (will be skipped from matching):');
+      eventsWithoutAttendees.slice(0, 10).forEach(e => {
+        const startTime = e.start?.dateTime || e.start?.date;
+        console.log(`  - "${e.summary}" on ${startTime}`);
+      });
+      if (eventsWithoutAttendees.length > 10) {
+        console.log(`  ... and ${eventsWithoutAttendees.length - 10} more`);
+      }
+    }
+
+    // Debug: Check for ALL events in October (any year)
+    const octEvents = events.filter(e => {
+      const startTime = e.start?.dateTime || e.start?.date;
+      if (!startTime) return false;
+      const date = new Date(startTime);
+      return date.getMonth() === 9; // October (0-indexed, so 9 = October)
+    });
+    console.log(`\n========================================`);
+    console.log(`DEBUG: Found ${octEvents.length} events in October (any year)`);
+    console.log(`========================================`);
+    octEvents.forEach(e => {
+      const startTime = e.start?.dateTime || e.start?.date;
+      const date = new Date(startTime);
+      console.log(`\n📅 ${date.toLocaleDateString()} ${date.toLocaleTimeString()} - "${e.summary}"`);
+      console.log(`   Attendees: ${e.attendees?.map(a => a.email).join(', ') || 'none'}`);
+      console.log(`   Has ThoughtSpot attendee: ${e.attendees?.some(a => a.email.toLowerCase().includes('thoughtspot')) ? 'YES' : 'NO'}`);
+    });
+    console.log(`========================================\n`);
+
     // Debug: Check for ALL events in November (any year)
     const novEvents = events.filter(e => {
       const startTime = e.start?.dateTime || e.start?.date;
@@ -944,7 +980,16 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
 
     // Filter events that match company domain or contact emails
     const matchedEvents = events.filter(event => {
-      if (!event.attendees) return false;
+      // Log events without attendees that might be relevant
+      if (!event.attendees || event.attendees.length === 0) {
+        const startTime = event.start?.dateTime || event.start?.date;
+        // Log ThoughtSpot-related events specifically
+        if (event.summary && (event.summary.toLowerCase().includes('thoughtspot') ||
+                              event.summary.toLowerCase().includes('mcp'))) {
+          console.log(`⚠️  SKIPPED (no attendees): "${event.summary}" on ${startTime}`);
+        }
+        return false;
+      }
 
       const hasMatch = event.attendees.some(attendee => {
         const email = attendee.email.toLowerCase();
@@ -955,6 +1000,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
       // Debug log for events with relevant attendees
       if (event.attendees.some(a => a.email.toLowerCase().includes('lemonade'))) {
         console.log(`DEBUG: Event "${event.summary}" has Lemonade attendee:`, event.attendees.map(a => a.email).join(', '));
+        console.log(`  Checking against domain: ${companyDomain}, Match: ${hasMatch}`);
+      }
+
+      // Debug log for ThoughtSpot-related events
+      if (event.attendees.some(a => a.email.toLowerCase().includes('thoughtspot'))) {
+        console.log(`DEBUG: Event "${event.summary}" has ThoughtSpot attendee:`, event.attendees.map(a => a.email).join(', '));
         console.log(`  Checking against domain: ${companyDomain}, Match: ${hasMatch}`);
       }
 
