@@ -238,6 +238,9 @@ async function generateNextStep(engagements, dealName, companyName, upcomingMeet
   // Use only engagements with content for analysis
   const validEngagements = engagementsWithContent;
 
+  console.log(`\n>>> GENERATING NEXT STEP FOR: ${companyName} - "${dealName}"`);
+  console.log(`>>> Using ${validEngagements.length} engagements with content`);
+
   // Get current date for context
   const now = new Date();
   const currentDate = now.toLocaleDateString('en-US', {
@@ -352,6 +355,17 @@ OUTPUT: 80 chars max, terse, actionable, specific. NO company name. NO made-up i
 async function generateNextStepForDeal(deal, contactId = null, forceRefresh = false) {
   const companyId = deal.companyId;
   const dealId = deal.id;
+  const companyName = deal.companyName || 'Unknown Company';
+
+  console.log(`\n========================================`);
+  console.log(`NEXT STEPS GENERATION DEBUG`);
+  console.log(`Deal ID: ${dealId}`);
+  console.log(`Deal Name: ${deal.dealName}`);
+  console.log(`Company ID: ${companyId}`);
+  console.log(`Company Name: ${companyName}`);
+  console.log(`Contact ID: ${contactId}`);
+  console.log(`Force Refresh: ${forceRefresh}`);
+  console.log(`========================================\n`);
 
   // If no company or contact, we can't generate next steps
   if (!companyId && !contactId) {
@@ -380,16 +394,29 @@ async function generateNextStepForDeal(deal, contactId = null, forceRefresh = fa
   // Fetch fresh engagements - try company first, then contact
   let engagements = [];
   if (companyId) {
+    console.log(`Fetching engagements for company ${companyId} (${companyName})...`);
     engagements = await fetchCompanyEngagements(companyId);
+    console.log(`Found ${engagements.length} engagements for company ${companyId}`);
+
+    // Log first few engagements to see what's being fetched
+    if (engagements.length > 0) {
+      console.log(`First few engagements for ${companyName}:`);
+      engagements.slice(0, 3).forEach((eng, idx) => {
+        const preview = eng.content ? eng.content.substring(0, 100) : '(no content)';
+        console.log(`  ${idx + 1}. [${eng.type}] ${new Date(eng.timestamp).toLocaleDateString()} - ${preview}...`);
+      });
+    }
   }
 
   // Fallback to contact engagements if company has none or no company exists
   if (engagements.length === 0 && contactId) {
     console.log(`${companyId ? 'No company engagements' : 'No company'}, trying contact ${contactId}`);
     engagements = await fetchContactEngagements(contactId);
+    console.log(`Found ${engagements.length} contact engagements`);
   }
 
   // Store engagements in database using the storage ID
+  console.log(`Storing ${engagements.length} engagements with storageId: ${storageId}`);
   for (const engagement of engagements) {
     await db.saveEngagement(storageId, engagement);
   }
