@@ -960,9 +960,13 @@
             }
         });
 
-        // Stop propagation for all clicks within the menu (prevents menu from closing when clicking checkboxes)
+        // Prevent menu from closing when clicking inside it, but allow checkbox events to work
         document.getElementById('columnVisibilityMenu').addEventListener('click', (event) => {
-            event.stopPropagation();
+            // Only stop propagation if not clicking on an input or label
+            // This allows checkbox change events to fire properly
+            if (event.target.tagName !== 'INPUT' && event.target.tagName !== 'LABEL') {
+                event.stopPropagation();
+            }
         });
 
         async function loadStages() {
