@@ -334,7 +334,7 @@ CRITICAL INSTRUCTIONS:
 13. ⚠️ If a follow-up meeting is already scheduled (see UPCOMING MEETINGS), DO NOT suggest "schedule follow-up meeting"
 14. If suggested action references a past date or already-scheduled meeting, say "Unsure" instead
 15. ⚠️ NEVER mention "Runlayer" or "Anysource" - the tool users work at these companies, so phrases like "with Runlayer" or "Runlayer integration" are redundant and confusing
-16. ⚠️ Relative date references (Monday, next week, tomorrow, etc.) in OLD emails (>14 days) are OUTDATED. If an email mentions scheduling but is >14 days old, IGNORE those suggestions - those dates have passed. Return "Follow up to reschedule" or "Unsure" instead.
+16. ⚠️ Relative date references (Monday, next week, tomorrow, etc.) in OLD emails (>14 days) are OUTDATED. If an old email mentions scheduling, check if there are any meetings or follow-up activity AFTER that email. If there are subsequent meetings/notes, the scheduling likely happened - don't suggest rescheduling. Only return "Follow up to reschedule" if the old scheduling reference was never followed up on (no subsequent meetings or notes after that email).
 
 BAD (hallucination): Making up details not in the activity data
 BAD (useless): "Review 1/17 note for next steps"
