@@ -943,8 +943,9 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     const existingMeetingKeys = new Set(
       existingMeetings
         .filter(m => m && m.hs_meeting_start_time && m.hs_meeting_title)
-        .map(m => `${m.hs_meeting_start_time}_${m.hs_meeting_title}`)
+        .map(m => `${m.hs_meeting_start_time}_${m.hs_meeting_title}`) // hs_meeting_start_time is already a Unix timestamp
     );
+    console.log(`Found ${existingMeetingKeys.size} existing meetings for duplicate detection`);
 
     // Sync events to HubSpot
     let syncedCount = 0;
@@ -954,18 +955,18 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     for (const event of matchedEvents) {
       const startTime = event.start.dateTime || event.start.date;
       const title = event.summary || 'No Title';
-      const meetingKey = `${startTime}_${title}`;
+      const startTimeMs = new Date(startTime).getTime();
+      const meetingKey = `${startTimeMs}_${title}`;
 
       // Skip duplicates
       if (existingMeetingKeys.has(meetingKey)) {
-        console.log(`Skipping duplicate: ${title} at ${startTime}`);
+        console.log(`✓ Skipping duplicate: ${title} at ${startTime} (already exists in HubSpot)`);
         skippedCount++;
         continue;
       }
 
       // Create meeting in HubSpot
       try {
-        const startTimeMs = new Date(startTime).getTime();
         const meetingResponse = await hubspotApi.post('/crm/v3/objects/meetings', {
           properties: {
             hs_meeting_title: title,
@@ -997,7 +998,7 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
             data: error.response?.data,
             message: error.message
           }, null, 2));
-          throw error; // Re-throw to skip this meeting
+          // Don't throw - continue with contact associations even if company association fails
         }
 
         // Associate meeting with contacts (and create missing ones)
