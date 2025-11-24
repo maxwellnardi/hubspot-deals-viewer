@@ -990,7 +990,15 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
               type: 202
             }]
           });
-          console.log(`✓ Associated meeting ${meetingId} with company ${companyId}`);
+
+          // Check if there were any errors in the response
+          if (assocResponse.data.errors && assocResponse.data.errors.length > 0) {
+            console.error(`✗ Association failed for meeting ${meetingId}:`, JSON.stringify(assocResponse.data.errors, null, 2));
+          } else if (assocResponse.data.results && assocResponse.data.results.length > 0) {
+            console.log(`✓ Associated meeting ${meetingId} with company ${companyId}`);
+          } else {
+            console.warn(`⚠ Unexpected association response:`, JSON.stringify(assocResponse.data, null, 2));
+          }
         } catch (error) {
           console.error(`✗ Error associating meeting ${meetingId} with company ${companyId}:`, JSON.stringify({
             status: error.response?.status,
