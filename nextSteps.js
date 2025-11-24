@@ -219,9 +219,24 @@ async function fetchContactEngagements(contactId) {
  * Use Claude AI to analyze engagements and determine next step
  */
 async function generateNextStep(engagements, dealName, companyName, upcomingMeetings = []) {
+  // Check if engagements exist and have meaningful content
   if (!engagements || engagements.length === 0) {
     return "No recent activity. Reach out to re-engage";
   }
+
+  // Filter out engagements without any actual content
+  const engagementsWithContent = engagements.filter(eng =>
+    eng.content && eng.content.trim().length > 0
+  );
+
+  // If no engagements have actual content, return early
+  if (engagementsWithContent.length === 0) {
+    console.log(`No engagement content found for ${companyName}. Returning default message.`);
+    return "No recent activity. Reach out to re-engage";
+  }
+
+  // Use only engagements with content for analysis
+  const validEngagements = engagementsWithContent;
 
   // Get current date for context
   const now = new Date();
@@ -232,8 +247,8 @@ async function generateNextStep(engagements, dealName, companyName, upcomingMeet
     day: 'numeric'
   });
 
-  // Format engagements for Claude
-  const formattedEngagements = engagements.map((eng, idx) => {
+  // Format engagements for Claude (only use validated engagements with content)
+  const formattedEngagements = validEngagements.map((eng, idx) => {
     const date = new Date(eng.timestamp);
     const daysAgo = Math.floor((Date.now() - eng.timestamp) / (1000 * 60 * 60 * 24));
 
@@ -264,7 +279,7 @@ async function generateNextStep(engagements, dealName, companyName, upcomingMeet
   }
 
   // Check for ghosting scenario
-  const lastEngagement = engagements[0];
+  const lastEngagement = validEngagements[0];
   const daysSinceLastActivity = Math.floor((Date.now() - lastEngagement.timestamp) / (1000 * 60 * 60 * 24));
   const lastWasOutbound = lastEngagement.direction === 'outbound';
 
@@ -281,29 +296,33 @@ ${upcomingMeetingsContext}
 ${lastWasOutbound && daysSinceLastActivity >= 7 ? '\n⚠️ GHOSTED: Sent message ' + daysSinceLastActivity + 'd ago, no response.\n' : ''}
 
 CRITICAL INSTRUCTIONS:
-1. READ the actual content of notes - they contain specific next steps and action items
-2. EXTRACT the most important/urgent action item FROM the note
-3. DO NOT say "review note" or "check note" - that's useless
-4. Surface the ACTUAL action item mentioned in the note
-5. If multiple action items in note, pick the one that most directly advances the deal
-6. Include specifics: who, what, when, how much
-7. NEVER mention company name - it's already shown in the same row
-8. Be maximally concise - cut unnecessary words like "team", "to discuss next steps"
-9. ⚠️ NEVER suggest actions for dates that have ALREADY PASSED relative to today's date
-10. ⚠️ If a follow-up meeting is already scheduled (see UPCOMING MEETINGS), DO NOT suggest "schedule follow-up meeting"
-11. If suggested action references a past date or already-scheduled meeting, say "Unsure" instead
+1. ⚠️ ONLY extract information that is EXPLICITLY stated in the activity data above
+2. ⚠️ NEVER make up or infer details (names, numbers, deadlines, requests) that aren't in the data
+3. ⚠️ If activity data is minimal or lacks actionable content, return "Unsure"
+4. READ the actual content of notes - they contain specific next steps and action items
+5. EXTRACT the most important/urgent action item FROM the note content
+6. DO NOT say "review note" or "check note" - that's useless
+7. Surface the ACTUAL action item mentioned in the note
+8. If multiple action items in note, pick the one that most directly advances the deal
+9. Include specifics only if they're in the data: who, what, when, how much
+10. NEVER mention company name - it's already shown in the same row
+11. Be maximally concise - cut unnecessary words like "team", "to discuss next steps"
+12. ⚠️ NEVER suggest actions for dates that have ALREADY PASSED relative to today's date
+13. ⚠️ If a follow-up meeting is already scheduled (see UPCOMING MEETINGS), DO NOT suggest "schedule follow-up meeting"
+14. If suggested action references a past date or already-scheduled meeting, say "Unsure" instead
 
+BAD (hallucination): Making up details not in the activity data
 BAD (useless): "Review 1/17 note for next steps"
 BAD (verbose): "Schedule follow-up meeting with HPE team to discuss next steps"
 BAD (redundant): "Follow up with Acme about pricing"
 BAD (past date): "Schedule meeting on Nov 11" (when today is Nov 24)
 BAD (already scheduled): "Schedule follow-up meeting" (when one is already on calendar)
-GOOD: "Send pricing for 100-seat license by EOW (per CTO request)"
-GOOD: "Schedule tech demo before Jan 31 deadline"
-GOOD: "Get legal approval on data privacy terms (blocking signature)"
-GOOD: "Unsure" (if all action items reference past dates or are already completed)
+GOOD: "Send updated contract terms (per Oct 15 note)"
+GOOD: "Schedule tech demo before Jan 31 deadline (mentioned in last email)"
+GOOD: "Get legal approval on data privacy terms (blocking signature per note)"
+GOOD: "Unsure" (if data lacks actionable content, references past dates, or actions are completed)
 
-OUTPUT: 80 chars max, terse, actionable, specific. NO company name.`;
+OUTPUT: 80 chars max, terse, actionable, specific. NO company name. NO made-up information.`;
 
   try {
     const message = await anthropic.messages.create({
