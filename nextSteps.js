@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const db = require('./db');
+const { google } = require('googleapis');
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -14,6 +15,22 @@ const hubspotApi = axios.create({
     'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`
   }
 });
+
+// Google Calendar OAuth2 client
+let calendar = null;
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    'http://localhost:3000'
+  );
+
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+  });
+
+  calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+}
 
 /**
  * Fetch engagements (emails and notes) for a company from HubSpot
@@ -82,6 +99,78 @@ async function fetchCompanyEngagements(companyId) {
 }
 
 /**
+ * Fetch upcoming meetings for a company from Google Calendar
+ */
+async function fetchUpcomingMeetings(companyId, companyDomain) {
+  if (!calendar || !companyDomain) {
+    return [];
+  }
+
+  try {
+    const now = new Date();
+    const threeMonthsFromNow = new Date();
+    threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
+
+    // Calendars to search
+    const calendarIds = [
+      'max@runlayer.com',
+      'tal@runlayer.com',
+      'andy@runlayer.com',
+      'andy@anysource.com'
+    ];
+
+    const allEvents = [];
+
+    // Fetch from all calendars
+    for (const calendarId of calendarIds) {
+      try {
+        const response = await calendar.events.list({
+          calendarId: calendarId,
+          timeMin: now.toISOString(),
+          timeMax: threeMonthsFromNow.toISOString(),
+          maxResults: 100,
+          singleEvents: true,
+          orderBy: 'startTime'
+        });
+
+        const events = response.data.items || [];
+        allEvents.push(...events);
+      } catch (error) {
+        console.error(`Error fetching calendar ${calendarId}:`, error.message);
+      }
+    }
+
+    // Deduplicate events by ID
+    const eventMap = new Map();
+    allEvents.forEach(event => {
+      if (!eventMap.has(event.id)) {
+        eventMap.set(event.id, event);
+      }
+    });
+
+    const uniqueEvents = Array.from(eventMap.values());
+
+    // Filter for events matching the company domain
+    const matchedEvents = uniqueEvents.filter(event => {
+      if (!event.attendees || event.attendees.length === 0) {
+        return false;
+      }
+
+      return event.attendees.some(attendee => {
+        const email = attendee.email.toLowerCase();
+        return email.endsWith(`@${companyDomain}`);
+      });
+    });
+
+    // Return only the next 3 upcoming meetings
+    return matchedEvents.slice(0, 3);
+  } catch (error) {
+    console.error(`Error fetching upcoming meetings for company ${companyId}:`, error.message);
+    return [];
+  }
+}
+
+/**
  * Fetch engagements from contact as backup
  */
 async function fetchContactEngagements(contactId) {
@@ -129,10 +218,19 @@ async function fetchContactEngagements(contactId) {
 /**
  * Use Claude AI to analyze engagements and determine next step
  */
-async function generateNextStep(engagements, dealName, companyName) {
+async function generateNextStep(engagements, dealName, companyName, upcomingMeetings = []) {
   if (!engagements || engagements.length === 0) {
     return "No recent activity. Reach out to re-engage";
   }
+
+  // Get current date for context
+  const now = new Date();
+  const currentDate = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
 
   // Format engagements for Claude
   const formattedEngagements = engagements.map((eng, idx) => {
@@ -154,17 +252,31 @@ async function generateNextStep(engagements, dealName, companyName) {
     return formatted;
   }).join('\n\n');
 
+  // Format upcoming meetings if any
+  let upcomingMeetingsContext = '';
+  if (upcomingMeetings && upcomingMeetings.length > 0) {
+    const formattedMeetings = upcomingMeetings.map(m => {
+      const meetingDate = new Date(m.start?.dateTime || m.start?.date);
+      const daysUntil = Math.ceil((meetingDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return `- "${m.summary}" scheduled for ${meetingDate.toLocaleDateString()} (in ${daysUntil} days)`;
+    }).join('\n');
+    upcomingMeetingsContext = `\n\n📅 UPCOMING MEETINGS ALREADY SCHEDULED:\n${formattedMeetings}\n(Do NOT suggest scheduling these - they're already on calendar)`;
+  }
+
   // Check for ghosting scenario
   const lastEngagement = engagements[0];
   const daysSinceLastActivity = Math.floor((Date.now() - lastEngagement.timestamp) / (1000 * 60 * 60 * 24));
   const lastWasOutbound = lastEngagement.direction === 'outbound';
 
-  const prompt = `Deal: ${companyName} - "${dealName}"
+  const prompt = `TODAY'S DATE: ${currentDate}
+
+Deal: ${companyName} - "${dealName}"
 
 NOTES contain AI-generated meeting recaps with detailed next steps, action items, and commitments. Your job is to READ the note content and EXTRACT the single highest-priority action that will push this deal forward.
 
 Activity data:
 ${formattedEngagements}
+${upcomingMeetingsContext}
 
 ${lastWasOutbound && daysSinceLastActivity >= 7 ? '\n⚠️ GHOSTED: Sent message ' + daysSinceLastActivity + 'd ago, no response.\n' : ''}
 
@@ -177,14 +289,19 @@ CRITICAL INSTRUCTIONS:
 6. Include specifics: who, what, when, how much
 7. NEVER mention company name - it's already shown in the same row
 8. Be maximally concise - cut unnecessary words like "team", "to discuss next steps"
+9. ⚠️ NEVER suggest actions for dates that have ALREADY PASSED relative to today's date
+10. ⚠️ If a follow-up meeting is already scheduled (see UPCOMING MEETINGS), DO NOT suggest "schedule follow-up meeting"
+11. If suggested action references a past date or already-scheduled meeting, say "Unsure" instead
 
 BAD (useless): "Review 1/17 note for next steps"
 BAD (verbose): "Schedule follow-up meeting with HPE team to discuss next steps"
 BAD (redundant): "Follow up with Acme about pricing"
+BAD (past date): "Schedule meeting on Nov 11" (when today is Nov 24)
+BAD (already scheduled): "Schedule follow-up meeting" (when one is already on calendar)
 GOOD: "Send pricing for 100-seat license by EOW (per CTO request)"
 GOOD: "Schedule tech demo before Jan 31 deadline"
 GOOD: "Get legal approval on data privacy terms (blocking signature)"
-GOOD: "Schedule follow-up for Dec 15 (per Alberto's request)"
+GOOD: "Unsure" (if all action items reference past dates or are already completed)
 
 OUTPUT: 80 chars max, terse, actionable, specific. NO company name.`;
 
@@ -255,8 +372,14 @@ async function generateNextStepForDeal(deal, contactId = null, forceRefresh = fa
     await db.saveEngagement(storageId, engagement);
   }
 
+  // Fetch upcoming meetings from Google Calendar if we have a company domain
+  let upcomingMeetings = [];
+  if (companyId && deal.companyDomain) {
+    upcomingMeetings = await fetchUpcomingMeetings(companyId, deal.companyDomain);
+  }
+
   // Generate next step with AI
-  const nextStep = await generateNextStep(engagements, deal.dealName, deal.companyName || 'Unknown Company');
+  const nextStep = await generateNextStep(engagements, deal.dealName, deal.companyName || 'Unknown Company', upcomingMeetings);
 
   // Save next step to database
   const lastEngagementTimestamp = engagements.length > 0 ? engagements[0].timestamp : null;
