@@ -982,16 +982,16 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
 
         // Associate meeting with company using batch API
         try {
-          await hubspotApi.post('/crm/v3/associations/meeting/company/batch/create', {
+          const assocResponse = await hubspotApi.post('/crm/v3/associations/meeting/company/batch/create', {
             inputs: [{
               from: { id: meetingId },
               to: { id: companyId },
               type: "meeting_to_company"
             }]
           });
-          console.log(`Associated meeting ${meetingId} with company ${companyId}`);
+          console.log(`✓ Associated meeting ${meetingId} with company ${companyId}`, JSON.stringify(assocResponse.data, null, 2));
         } catch (error) {
-          console.error(`Error associating meeting with company:`, JSON.stringify({
+          console.error(`✗ Error associating meeting ${meetingId} with company ${companyId}:`, JSON.stringify({
             status: error.response?.status,
             statusText: error.response?.statusText,
             data: error.response?.data,
