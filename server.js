@@ -1066,20 +1066,30 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     // Find the most recent meeting we just created
     let mostRecentMeetingDate = null;
     if (matchedEvents.length > 0) {
+      console.log('DEBUG: All matched event dates:');
+      matchedEvents.forEach(e => {
+        const startTime = e.start?.dateTime || e.start?.date;
+        console.log(`  - "${e.summary}": ${startTime}`);
+      });
+
       const sortedEvents = matchedEvents.sort((a, b) => {
         const aTime = new Date(a.start?.dateTime || a.start?.date).getTime();
         const bTime = new Date(b.start?.dateTime || b.start?.date).getTime();
         return bTime - aTime; // Most recent first
       });
       mostRecentMeetingDate = sortedEvents[0].start?.dateTime || sortedEvents[0].start?.date;
+      console.log(`DEBUG: Most recent meeting date: ${mostRecentMeetingDate} from event "${sortedEvents[0].summary}"`);
     }
 
     // Update meeting cache with the most recent meeting date we just created
     // This ensures the Last Meeting column shows the correct date immediately
     if (mostRecentMeetingDate) {
+      console.log(`Updating meeting cache for company ${companyId} with date: ${mostRecentMeetingDate}`);
       await db.setMeetingCache(companyId, mostRecentMeetingDate, null);
+      console.log(`✓ Meeting cache updated successfully`);
     } else {
       // Clear cache if no meetings were created
+      console.log(`Clearing meeting cache for company ${companyId} (no meetings created)`);
       await db.clearMeetingCache(companyId);
     }
 
