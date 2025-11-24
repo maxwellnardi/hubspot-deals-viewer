@@ -913,11 +913,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     }
 
     // Deduplicate events across calendars (same event can appear in multiple calendars)
+    // Use only event.id as the key since Google Calendar event IDs are globally unique
+    // Using datetime in the key causes issues when the same event appears with different timezone representations
     const eventMap = new Map();
     allEvents.forEach(event => {
-      const eventKey = `${event.id}_${event.start?.dateTime || event.start?.date}`;
-      if (!eventMap.has(eventKey)) {
-        eventMap.set(eventKey, event);
+      if (!eventMap.has(event.id)) {
+        eventMap.set(event.id, event);
       }
     });
     const events = Array.from(eventMap.values());
