@@ -831,11 +831,13 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // Fetch company details including domain
+    console.log(`Fetching company details for ID: ${companyId}...`);
     const companyResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}`, {
       params: { properties: 'name,domain' }
     });
     const company = companyResponse.data.properties;
     const companyDomain = company.domain;
+    console.log(`✓ Company fetched: ${company.name}`);
 
     if (!companyDomain) {
       return res.status(400).json({
@@ -847,7 +849,9 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
     console.log(`Company: ${company.name}, Domain: ${companyDomain}`);
 
     // Fetch all contacts for this company
+    console.log(`Fetching contacts for company ${companyId}...`);
     const contactsResponse = await hubspotApi.get(`/crm/v3/objects/companies/${companyId}/associations/contacts`);
+    console.log(`✓ Contacts fetched: ${contactsResponse.data.results?.length || 0} contacts`);
     const contactIds = (contactsResponse.data.results || []).map(c => c.id);
 
     // Fetch contact details with emails
@@ -875,11 +879,12 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
 
     console.log(`Fetching calendar events from ${sixMonthsAgo.toISOString()} to ${sixMonthsFromNow.toISOString()}...`);
 
-    // Fetch from all three calendars: max@, tal@, andy@
+    // Fetch from all calendars: max@, tal@, andy@ (runlayer and anysource)
     const calendarIds = [
       'max@runlayer.com',
       'tal@runlayer.com',
-      'andy@runlayer.com'
+      'andy@runlayer.com',
+      'andy@anysource.com'
     ];
 
     let allEvents = [];
@@ -896,30 +901,46 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
         });
 
         const events = calendarEvents.data.items || [];
-        console.log(`Found ${events.length} events from ${calendarId}`);
+        console.log(`✓ Found ${events.length} events from ${calendarId}`);
         allEvents = allEvents.concat(events);
       } catch (error) {
-        console.error(`Error fetching calendar ${calendarId}:`, error.message);
+        console.error(`✗ Error fetching calendar ${calendarId}:`, error.message);
+        if (error.response) {
+          console.error(`  Status: ${error.response.status}, Details:`, error.response.data);
+        }
         // Continue with other calendars even if one fails
       }
     }
 
-    const events = allEvents;
-    console.log(`Found ${events.length} total calendar events across all calendars`);
+    // Deduplicate events across calendars (same event can appear in multiple calendars)
+    const eventMap = new Map();
+    allEvents.forEach(event => {
+      const eventKey = `${event.id}_${event.start?.dateTime || event.start?.date}`;
+      if (!eventMap.has(eventKey)) {
+        eventMap.set(eventKey, event);
+      }
+    });
+    const events = Array.from(eventMap.values());
+    console.log(`Found ${allEvents.length} total calendar events across all calendars (${events.length} unique events after deduplication)`);
 
-    // Debug: Check for events around November 11
-    const nov11Events = events.filter(e => {
+    // Debug: Check for ALL events in November (any year)
+    const novEvents = events.filter(e => {
       const startTime = e.start?.dateTime || e.start?.date;
       if (!startTime) return false;
       const date = new Date(startTime);
-      return date.getMonth() === 10 && date.getDate() === 11; // November is month 10
+      return date.getMonth() === 10; // November (any year)
     });
-    console.log(`DEBUG: Found ${nov11Events.length} events on November 11th`);
-    if (nov11Events.length > 0) {
-      nov11Events.slice(0, 3).forEach(e => {
-        console.log(`  - ${e.summary} with attendees:`, e.attendees?.map(a => a.email).join(', ') || 'none');
-      });
-    }
+    console.log(`\n========================================`);
+    console.log(`DEBUG: Found ${novEvents.length} events in November (any year)`);
+    console.log(`========================================`);
+    novEvents.forEach(e => {
+      const startTime = e.start?.dateTime || e.start?.date;
+      const date = new Date(startTime);
+      console.log(`\n📅 ${date.toLocaleDateString()} ${date.toLocaleTimeString()} - "${e.summary}"`);
+      console.log(`   Attendees: ${e.attendees?.map(a => a.email).join(', ') || 'none'}`);
+      console.log(`   Has Lemonade attendee: ${e.attendees?.some(a => a.email.toLowerCase().includes('lemonade')) ? 'YES' : 'NO'}`);
+    });
+    console.log(`========================================\n`);
 
     // Filter events that match company domain or contact emails
     const matchedEvents = events.filter(event => {
