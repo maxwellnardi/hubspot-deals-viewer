@@ -58,6 +58,8 @@
             justify-content: space-between;
             align-items: center;
             backdrop-filter: blur(8px);
+            position: relative;
+            z-index: 1500;
         }
 
         .header-actions {
@@ -65,6 +67,7 @@
             gap: 12px;
             align-items: center;
             position: relative;
+            z-index: 1600;
         }
 
         h1 {
@@ -109,6 +112,8 @@
         .table-container {
             overflow-x: auto;
             padding: 0 32px 32px 32px;
+            position: relative;
+            z-index: 1;
         }
 
         .section-container .table-container {
@@ -127,6 +132,8 @@
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            position: relative;
+            z-index: 1;
         }
 
         thead {
@@ -485,11 +492,12 @@
             padding: 8px;
             min-width: 220px;
             display: none;
-            z-index: 2000;
+            z-index: 9999;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.15);
             animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             opacity: 1 !important;
             pointer-events: auto !important;
+            isolation: isolate;
         }
 
         @keyframes slideDown {
@@ -503,8 +511,24 @@
             }
         }
 
+        /* Invisible backdrop to capture clicks outside dropdown */
+        .dropdown-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9998;
+            display: none;
+        }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
         .column-visibility-menu.show {
             display: block;
+            z-index: 99999 !important;
         }
 
         .column-option {
@@ -778,6 +802,8 @@
         </div>
     </div>
 
+    <div class="dropdown-backdrop" id="dropdownBackdrop" onclick="closeColumnVisibilityMenu()"></div>
+
     <div class="container">
         <div class="header">
             <h1>
@@ -892,7 +918,23 @@
         function toggleColumnVisibilityMenu(event) {
             event.stopPropagation();
             const menu = document.getElementById('columnVisibilityMenu');
-            menu.classList.toggle('show');
+            const backdrop = document.getElementById('dropdownBackdrop');
+
+            if (menu.classList.contains('show')) {
+                menu.classList.remove('show');
+                backdrop.classList.remove('show');
+            } else {
+                menu.classList.add('show');
+                backdrop.classList.add('show');
+            }
+        }
+
+        // Close column visibility menu
+        function closeColumnVisibilityMenu() {
+            const menu = document.getElementById('columnVisibilityMenu');
+            const backdrop = document.getElementById('dropdownBackdrop');
+            menu.classList.remove('show');
+            backdrop.classList.remove('show');
         }
 
         // Toggle specific column visibility
@@ -951,22 +993,11 @@
             });
         }
 
-        // Close menu when clicking outside
-        document.addEventListener('click', (event) => {
-            const menu = document.getElementById('columnVisibilityMenu');
-            if (menu && !event.target.closest('.column-visibility-menu') &&
-                !event.target.closest('button[onclick*="toggleColumnVisibilityMenu"]')) {
-                menu.classList.remove('show');
-            }
-        });
+        // Remove old event listener - now handled by backdrop
 
-        // Prevent menu from closing when clicking inside it, but allow checkbox events to work
+        // Prevent menu from closing when clicking inside it
         document.getElementById('columnVisibilityMenu').addEventListener('click', (event) => {
-            // Only stop propagation if not clicking on an input or label
-            // This allows checkbox change events to fire properly
-            if (event.target.tagName !== 'INPUT' && event.target.tagName !== 'LABEL') {
-                event.stopPropagation();
-            }
+            event.stopPropagation();
         });
 
         async function loadStages() {
