@@ -479,15 +479,17 @@
             position: absolute;
             top: calc(100% + 8px);
             right: 0;
-            background: hsl(222.2 47.4% 11.2%);
-            border: 1px solid hsl(var(--border));
+            background: hsl(217.2 32.6% 20%);
+            border: 2px solid hsl(215 20.2% 35%);
             border-radius: 12px;
             padding: 8px;
             min-width: 220px;
             display: none;
-            z-index: 1000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            z-index: 2000;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.15);
             animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1 !important;
+            pointer-events: auto !important;
         }
 
         @keyframes slideDown {
@@ -511,6 +513,8 @@
             transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 8px;
             margin-bottom: 2px;
+            pointer-events: auto;
+            user-select: none;
         }
 
         .column-option:last-child {
@@ -529,6 +533,8 @@
             font-size: 14px;
             font-weight: 500;
             gap: 12px;
+            width: 100%;
+            pointer-events: auto;
         }
 
         .column-option input[type="checkbox"] {
@@ -537,6 +543,7 @@
             width: 18px;
             height: 18px;
             accent-color: hsl(var(--primary));
+            pointer-events: auto;
         }
 
         .header > div {
