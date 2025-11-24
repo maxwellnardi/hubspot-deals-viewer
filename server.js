@@ -765,6 +765,23 @@ app.post('/api/deals/refresh/:dealId', async (req, res) => {
       daysInStage: daysInStage
     };
 
+    // Update the deals cache so the refresh persists across page reloads
+    try {
+      const cachedDeals = await db.getDealsCache();
+      if (cachedDeals && cachedDeals.data) {
+        const dealsArray = cachedDeals.data;
+        const dealIndex = dealsArray.findIndex(d => d.id === dealId);
+        if (dealIndex >= 0) {
+          dealsArray[dealIndex] = updatedDeal;
+          await db.setDealsCache(dealsArray);
+          console.log(`Updated deal ${dealId} in deals cache`);
+        }
+      }
+    } catch (cacheError) {
+      console.error(`Error updating deals cache:`, cacheError.message);
+      // Don't fail the request if cache update fails
+    }
+
     // Optionally regenerate next steps
     let nextStep = null;
     if (companyId || primaryContactId) {
@@ -981,24 +998,10 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
         const meetingId = meetingResponse.data.id;
         console.log(`Created meeting: ${title} (ID: ${meetingId})`);
 
-        // Associate meeting with company using batch API (type ID 202)
+        // Associate meeting with company using v4 API (default association)
         try {
-          const assocResponse = await hubspotApi.post('/crm/v3/associations/meeting/company/batch/create', {
-            inputs: [{
-              from: { id: meetingId },
-              to: { id: companyId },
-              type: 202
-            }]
-          });
-
-          // Check if there were any errors in the response
-          if (assocResponse.data.errors && assocResponse.data.errors.length > 0) {
-            console.error(`✗ Association failed for meeting ${meetingId}:`, JSON.stringify(assocResponse.data.errors, null, 2));
-          } else if (assocResponse.data.results && assocResponse.data.results.length > 0) {
-            console.log(`✓ Associated meeting ${meetingId} with company ${companyId}`);
-          } else {
-            console.warn(`⚠ Unexpected association response:`, JSON.stringify(assocResponse.data, null, 2));
-          }
+          await hubspotApi.put(`/crm/v4/objects/meeting/${meetingId}/associations/default/company/${companyId}`);
+          console.log(`✓ Associated meeting ${meetingId} with company ${companyId}`);
         } catch (error) {
           console.error(`✗ Error associating meeting ${meetingId} with company ${companyId}:`, JSON.stringify({
             status: error.response?.status,
@@ -1030,29 +1033,17 @@ app.post('/api/sync-calendar/:companyId', async (req, res) => {
                 createdContactsCount++;
                 console.log(`Created new contact: ${attendee.email} (ID: ${contactId})`);
 
-                // Associate contact with company using batch API (type ID 1)
-                await hubspotApi.post('/crm/v3/associations/contact/company/batch/create', {
-                  inputs: [{
-                    from: { id: contactId },
-                    to: { id: companyId },
-                    type: 1
-                  }]
-                });
+                // Associate contact with company using v4 API
+                await hubspotApi.put(`/crm/v4/objects/contact/${contactId}/associations/default/company/${companyId}`);
               } catch (error) {
                 console.error(`Error creating contact ${attendee.email}:`, error.message);
               }
             }
 
-            // Associate meeting with contact using batch API (type ID 200)
+            // Associate meeting with contact using v4 API
             if (contactId) {
               try {
-                await hubspotApi.post('/crm/v3/associations/meeting/contact/batch/create', {
-                  inputs: [{
-                    from: { id: meetingId },
-                    to: { id: contactId },
-                    type: 200
-                  }]
-                });
+                await hubspotApi.put(`/crm/v4/objects/meeting/${meetingId}/associations/default/contact/${contactId}`);
               } catch (error) {
                 console.error(`Error associating meeting with contact ${contactId}:`, error.message);
               }
