@@ -50,6 +50,16 @@ async function fetchCompanyEngagements(companyId) {
 
       // Filter for emails and notes only
       if (engagement.type === 'EMAIL' || engagement.type === 'INCOMING_EMAIL' || engagement.type === 'NOTE') {
+        // Skip calendar invitation responses (accepted/declined)
+        const subject = metadata.subject || '';
+        const isCalendarResponse = subject.toLowerCase().includes('accepted:') ||
+                                   subject.toLowerCase().includes('declined:') ||
+                                   subject.toLowerCase().includes('tentative:');
+
+        if (isCalendarResponse) {
+          continue; // Skip calendar responses
+        }
+
         // Extract content based on type
         let content = null;
         if (engagement.type === 'NOTE') {
@@ -186,6 +196,16 @@ async function fetchContactEngagements(contactId) {
       const { engagement, metadata } = item;
 
       if (engagement.type === 'EMAIL' || engagement.type === 'INCOMING_EMAIL' || engagement.type === 'NOTE') {
+        // Skip calendar invitation responses (accepted/declined)
+        const subject = metadata.subject || '';
+        const isCalendarResponse = subject.toLowerCase().includes('accepted:') ||
+                                   subject.toLowerCase().includes('declined:') ||
+                                   subject.toLowerCase().includes('tentative:');
+
+        if (isCalendarResponse) {
+          continue; // Skip calendar responses
+        }
+
         const processed_engagement = {
           id: engagement.id.toString(),
           type: engagement.type,
